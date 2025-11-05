@@ -33,9 +33,25 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
     time.sleep(3)
 
     try:
-        # Load JSON
+        # Load layout JSON
         with open(json_path, "r", encoding="utf-8") as f:
             layout = json.load(f)
+
+        # Load plot.json for expression/pose info
+        plot_json_path = Path(json_path).parent / "plot.json"
+        plot_data = {}
+        if plot_json_path.exists():
+            with open(plot_json_path, "r", encoding="utf-8") as f:
+                plot_data = json.load(f)
+            logger.info(f"[{run_id}] Loaded plot.json for expression/pose data")
+
+        # Load characters.json for appearance info
+        characters_json_path = Path(json_path).parent / "characters.json"
+        characters_data = {}
+        if characters_json_path.exists():
+            with open(characters_json_path, "r", encoding="utf-8") as f:
+                characters_data = json.load(f)
+            logger.info(f"[{run_id}] Loaded characters.json for appearance data")
 
         # Get image provider
         client = None
@@ -93,7 +109,36 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
                         None
                     )
                     if char:
-                        prompt = f"{char['name']}, {char['persona']}, {spec.get('art_style', '')}"
+                        art_style = spec.get('art_style', '파스텔 수채화')
+
+                        # Get appearance from characters.json
+                        appearance = char['persona']  # fallback
+                        if characters_data:
+                            char_data = next(
+                                (c for c in characters_data.get("characters", []) if c["char_id"] == char_id),
+                                None
+                            )
+                            if char_data:
+                                appearance = char_data.get("appearance", char['persona'])
+
+                        # Get expression/pose from plot.json for this scene
+                        expression = "neutral"
+                        pose = "standing"
+                        if plot_data:
+                            scene_data = next(
+                                (s for s in plot_data.get("scenes", []) if s["scene_id"] == scene_id),
+                                None
+                            )
+                            if scene_data and scene_data.get("char_id") == char_id:
+                                expression = scene_data.get("expression", "neutral")
+                                pose = scene_data.get("pose", "standing")
+
+                        # Build prompt: art_style + appearance + expression + pose
+                        if expression != "none" and pose != "none":
+                            prompt = f"{art_style}, {appearance}, {expression} expression, {pose} pose"
+                        else:
+                            prompt = f"{art_style}, {appearance}"
+
                         seed = char.get("seed", settings.BASE_CHAR_SEED)
                     else:
                         prompt = f"character, {spec.get('art_style', '')}"
