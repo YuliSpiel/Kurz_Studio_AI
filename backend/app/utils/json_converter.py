@@ -19,18 +19,18 @@ def convert_plot_to_json(
     music_genre: str = "ambient"
 ) -> Path:
     """
-    Convert plot JSON and characters.json to final layout JSON.
+    Convert plot.json and characters.json to final layout.json.
 
     Args:
-        plot_json_path: Path to plot JSON file
+        plot_json_path: Path to plot.json file
         run_id: Run identifier
         art_style: Art style for image generation
         music_genre: Music genre for BGM
 
     Returns:
-        Path to generated JSON file
+        Path to generated layout.json file
     """
-    logger.info(f"Converting plot to JSON: {plot_json_path}")
+    logger.info(f"Converting plot.json to layout.json: {plot_json_path}")
 
     plot_json_path = Path(plot_json_path)
     characters_json_path = plot_json_path.parent / "characters.json"
@@ -223,10 +223,10 @@ def convert_plot_to_json(
         }
     )
 
-    # Write JSON
+    # Write layout JSON
     json_path = plot_json_path.parent / "layout.json"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(shorts_json.model_dump(), f, indent=2, ensure_ascii=False)
 
-    logger.info(f"✅ JSON generated: {json_path}")
+    logger.info(f"✅ Layout JSON generated: {json_path}")
     return json_path
