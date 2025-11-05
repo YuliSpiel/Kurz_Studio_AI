@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     BG_SEED_BASE: int = 2000
 
     # External API keys
+    OPENAI_API_KEY: str = ""
     ELEVENLABS_API_KEY: str = ""
     PLAYHT_API_KEY: str = ""
     MUBERT_API_KEY: str = ""

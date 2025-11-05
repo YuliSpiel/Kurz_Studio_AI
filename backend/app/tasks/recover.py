@@ -31,9 +31,8 @@ def recover_task(self, run_id: str, failed_state: str, error_message: str):
     logger.info(f"[{run_id}] Error: {error_message}")
 
     try:
-        # Get FSM
-        from app.orchestrator.fsm import _fsm_registry
-        fsm = _fsm_registry.get(run_id)
+        # Get FSM (from Redis if needed)
+        fsm = get_fsm(run_id)
         if not fsm:
             raise ValueError(f"FSM not found for run {run_id}")
 
