@@ -40,10 +40,10 @@ GPT가 시나리오를 생성하고, 각 에이전트가 이를 기반으로 이
 ### 5. 대사 및 음성
 | 필드 | 타입 | 설명 | 예시 |
 |------|------|------|------|
-| `text` | string | 대사 내용 | `안녕하세요!`, `반갑습니다.` |
-| `voice_id` | string | ElevenLabs 음성 ID | `voice_hero`, `voice_elder` |
+| `text` | string | 대사/해설 내용 | `안녕하세요!`, `반갑습니다.` |
+| `text_type` | string | 텍스트 타입 | `dialogue` (대사), `narration` (해설) |
+| `voice_id` | string | ElevenLabs 음성 ID | `voice_hero`, `voice_elder`, `voice_narrator` |
 | `emotion` | string | 음성 감정 | `neutral`, `happy`, `sad` |
-| `subtitle_text` | string | 자막 텍스트 | `안녕하세요!` |
 | `subtitle_position` | string | 자막 위치 | `top`, `bottom`, `center` |
 | `duration_ms` | int | 지속 시간 (밀리초) | `3000`, `5000` |
 
@@ -83,13 +83,14 @@ GPT가 시나리오를 생성하고, 각 에이전트가 이를 기반으로 이
 ## 📝 CSV 예시
 
 ```csv
-scene_id,image_id,title,bg_prompt,char_id,char_name,char_persona,char_pose,char_expression,char_position,char_size,omni_ref_id,lora_tag,text,voice_id,emotion,subtitle_text,subtitle_position,duration_ms,bgm_prompt,sfx_prompt
-scene_1,img_001,오프닝,숲속 풍경 햇살,char_hero,주인공,젊은 남성 갈색머리 파란눈,standing,happy,center,1.0,ref_hero,anime_style,안녕하세요!,voice_hero,happy,안녕하세요!,bottom,3000,cinematic_orchestral,birds_chirping
-scene_1,,,,,,,standing,happy,,,,,반갑습니다!,voice_hero,neutral,반갑습니다!,bottom,2000,,
-scene_1,img_002,,,,,,,sitting,neutral,,,,,앉아서 얘기할게요.,voice_hero,neutral,앉아서 얘기할게요.,bottom,3000,,
-scene_2,img_003,마을도착,중세 마을 거리,char_hero,주인공,,walking,neutral,left,0.8,ref_hero,anime_style,마을에 도착했어요.,voice_hero,neutral,마을에 도착했어요.,bottom,4000,peaceful_village,footsteps
-scene_2,,,,,char_elder,현명한 노인 흰수염,standing,happy,right,1.2,ref_elder,,어서오게.,voice_elder,happy,어서오게.,bottom,3000,,
-scene_3,null,전환,null,,,,,,,,,,,,,,,2000,transition_sound,
+scene_id,image_id,title,bg_prompt,char_id,char_name,char_persona,char_pose,char_expression,char_position,char_size,omni_ref_id,lora_tag,text,text_type,voice_id,emotion,subtitle_position,duration_ms,bgm_prompt,sfx_prompt
+scene_1,img_001,오프닝,숲속 풍경 햇살,char_hero,주인공,젊은 남성 갈색머리 파란눈,standing,happy,center,1.0,ref_hero,anime_style,안녕하세요!,dialogue,voice_hero,happy,bottom,3000,cinematic_orchestral,birds_chirping
+scene_1,,,,,,,standing,happy,,,,,반갑습니다!,dialogue,voice_hero,neutral,bottom,2000,,
+scene_1,img_002,,,,,,,sitting,neutral,,,,,앉아서 얘기할게요.,dialogue,voice_hero,neutral,bottom,3000,,
+scene_2,img_003,마을도착,중세 마을 거리,char_hero,주인공,,walking,neutral,left,0.8,ref_hero,anime_style,마을에 도착했어요.,dialogue,voice_hero,neutral,bottom,4000,peaceful_village,footsteps
+scene_2,,,,,char_elder,현명한 노인 흰수염,standing,happy,right,1.2,ref_elder,,어서오게.,dialogue,voice_elder,happy,bottom,3000,,
+scene_2,,,,,,,,,,,,,,주인공이 마을에 들어서자 노인이 반갑게 맞이한다.,narration,voice_narrator,neutral,top,3000,,
+scene_3,null,전환,null,,,,,,,,,,,,,,2000,transition_sound,
 ```
 
 ---
@@ -159,6 +160,44 @@ def should_generate_new_image(current_scene, previous_scene):
 
 ---
 
+## 📹 자막 렌더링 로직
+
+### text_type에 따른 자막 처리
+
+```python
+def format_subtitle(text: str, text_type: str) -> str:
+    """
+    text_type에 따라 자막 포맷 적용.
+
+    Args:
+        text: 원본 텍스트
+        text_type: 'dialogue' 또는 'narration'
+
+    Returns:
+        포맷된 자막 텍스트
+    """
+    if text_type == "dialogue":
+        # 대사인 경우 큰따옴표 추가
+        return f'"{text}"'
+    else:
+        # 해설인 경우 그대로 반환
+        return text
+
+# 사용 예시
+subtitle_text = format_subtitle("안녕하세요!", "dialogue")
+# 결과: "안녕하세요!"
+
+subtitle_text = format_subtitle("주인공이 마을에 도착했다.", "narration")
+# 결과: 주인공이 마을에 도착했다.
+```
+
+### 자막 위치 규칙
+
+- **dialogue**: 기본적으로 `bottom` (하단)
+- **narration**: 기본적으로 `top` 또는 `center` (상단/중앙)
+
+---
+
 ## 🎯 GPT 프롬프트 가이드
 
 ### CSV 생성 시 GPT에게 주는 지침
@@ -187,6 +226,10 @@ def should_generate_new_image(current_scene, previous_scene):
 **대사 규칙:**
 - 자연스럽고 간결하게 (15자 이내 권장)
 - 같은 씬에서 여러 대사는 행 복제 후 대사만 변경
+- text_type 필드로 대사/해설 구분:
+  - dialogue: 캐릭터가 말하는 대사 (큰따옴표 없이 텍스트만 입력)
+  - narration: 나레이션/해설 (큰따옴표 없이 텍스트만 입력)
+- 렌더링 시 text_type이 dialogue인 경우 자막에 큰따옴표 자동 추가
 ```
 
 ---
