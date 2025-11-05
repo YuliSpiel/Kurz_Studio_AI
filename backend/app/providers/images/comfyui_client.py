@@ -61,11 +61,19 @@ class ComfyUIClient:
         Returns:
             Workflow dict
         """
-        # Fix path if it starts with backend/
-        if template_path.startswith("backend/"):
-            template_path = template_path[len("backend/"):]
+        from pathlib import Path
 
-        with open(template_path, "r") as f:
+        # Convert to Path object for easier handling
+        path = Path(template_path)
+
+        # If path is not absolute and doesn't exist, try adding backend/ prefix
+        if not path.is_absolute() and not path.exists():
+            # Try with backend/ prefix
+            backend_path = Path("backend") / template_path
+            if backend_path.exists():
+                path = backend_path
+
+        with open(path, "r") as f:
             return json.load(f)
 
     def substitute_workflow_params(

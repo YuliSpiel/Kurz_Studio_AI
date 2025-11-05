@@ -78,9 +78,17 @@ class ElevenLabsClient(TTSProvider):
             response.raise_for_status()
 
             # Save audio
-            output_dir = Path("app/data/outputs")
-            output_dir.mkdir(parents=True, exist_ok=True)
-            output_path = output_dir / output_filename
+            # If output_filename is an absolute path or contains directories, use it directly
+            output_path = Path(output_filename)
+
+            # If it's just a filename (no directory), put it in default output directory
+            if not output_path.parent or output_path.parent == Path('.'):
+                output_dir = Path("app/data/outputs")
+                output_dir.mkdir(parents=True, exist_ok=True)
+                output_path = output_dir / output_filename
+            else:
+                # Create parent directories if they don't exist
+                output_path.parent.mkdir(parents=True, exist_ok=True)
 
             with open(output_path, "wb") as f:
                 f.write(response.content)
