@@ -28,6 +28,10 @@ def voice_task(self, run_id: str, json_path: str, spec: dict):
     logger.info(f"[{run_id}] Voice: Starting TTS generation...")
     publish_progress(run_id, progress=0.55, log="성우: 음성 합성 시작...")
 
+    # TEST: 3초 대기
+    import time
+    time.sleep(3)
+
     try:
         # Load JSON
         with open(json_path, "r", encoding="utf-8") as f:

@@ -28,6 +28,10 @@ def composer_task(self, run_id: str, json_path: str, spec: dict):
     logger.info(f"[{run_id}] Composer: Starting music generation...")
     publish_progress(run_id, progress=0.45, log="작곡가: 배경음악 생성 시작...")
 
+    # TEST: 3초 대기
+    import time
+    time.sleep(3)
+
     try:
         # Load JSON
         with open(json_path, "r", encoding="utf-8") as f:

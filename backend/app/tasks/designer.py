@@ -28,6 +28,10 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
     logger.info(f"[{run_id}] Designer: Starting image generation...")
     publish_progress(run_id, progress=0.3, log="디자이너: 이미지 생성 시작...")
 
+    # TEST: 3초 대기
+    import time
+    time.sleep(3)
+
     try:
         # Load JSON
         with open(json_path, "r", encoding="utf-8") as f:

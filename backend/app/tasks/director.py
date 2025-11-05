@@ -32,6 +32,10 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
     logger.info(f"[{run_id}] Asset results: {asset_results}")
     publish_progress(run_id, progress=0.7, log="감독: 최종 영상 합성 시작...")
 
+    # TEST: 3초 대기
+    import time
+    time.sleep(3)
+
     try:
         # Get FSM and transition to RENDERING
         from app.orchestrator.fsm import get_fsm

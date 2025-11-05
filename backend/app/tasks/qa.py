@@ -36,6 +36,10 @@ def qa_task(self, run_id: str, json_path: str, video_path: str):
     logger.info(f"[{run_id}] QA: Starting quality check...")
     publish_progress(run_id, state="QA", progress=0.85, log="QA: 품질 검수 시작...")
 
+    # TEST: 3초 대기
+    import time
+    time.sleep(3)
+
     try:
         # Get FSM
         from app.orchestrator.fsm import get_fsm
