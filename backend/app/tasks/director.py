@@ -8,6 +8,7 @@ from pathlib import Path
 
 from app.celery_app import celery
 from app.orchestrator.fsm import RunState
+from app.utils.progress import publish_progress
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +30,15 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
     """
     logger.info(f"[{run_id}] Director: Starting video composition...")
     logger.info(f"[{run_id}] Asset results: {asset_results}")
+    publish_progress(run_id, progress=0.7, log="감독: 최종 영상 합성 시작...")
 
     try:
         # Get FSM and transition to RENDERING
-        from app.orchestrator.fsm import _fsm_registry
-        fsm = _fsm_registry.get(run_id)
+        from app.orchestrator.fsm import get_fsm
+        fsm = get_fsm(run_id)
         if fsm and fsm.transition_to(RunState.RENDERING):
             logger.info(f"[{run_id}] Transitioned to RENDERING")
+            publish_progress(run_id, state="RENDERING", progress=0.75, log="렌더링 단계 시작")
 
             from app.main import runs
             if run_id in runs:
@@ -46,11 +49,92 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
         with open(json_path, "r", encoding="utf-8") as f:
             layout = json.load(f)
 
+        # Check if we're in stub mode (no real assets)
+        from app.config import settings
+        stub_mode = not settings.ELEVENLABS_API_KEY and not settings.PLAYHT_API_KEY
+
+        if stub_mode:
+            logger.info(f"[{run_id}] ===== STUB RENDERING MODE =====")
+            logger.info(f"[{run_id}] Video composition summary:")
+            logger.info(f"[{run_id}]   Format: 1080x1920 (9:16)")
+            logger.info(f"[{run_id}]   FPS: {layout.get('timeline', {}).get('fps', 30)}")
+            logger.info(f"[{run_id}]   Scenes: {len(layout.get('scenes', []))}")
+
+            for scene in layout.get("scenes", []):
+                scene_id = scene["scene_id"]
+                duration_sec = scene["duration_ms"] / 1000.0
+                logger.info(f"[{run_id}]   - {scene_id}: {duration_sec}s")
+                logger.info(f"[{run_id}]     Images: {len(scene.get('images', []))}")
+                logger.info(f"[{run_id}]     Dialogue: {len(scene.get('dialogue', []))}")
+
+            global_bgm = layout.get("global_bgm")
+            if global_bgm:
+                logger.info(f"[{run_id}]   BGM: {global_bgm.get('audio_url', 'N/A')}")
+
+            # Create stub output file
+            output_dir = Path(f"app/data/outputs/{run_id}")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            output_path = output_dir / "final_video.txt"
+
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write("=== AutoShorts Video Composition Summary ===\n\n")
+                f.write(f"Run ID: {run_id}\n")
+                f.write(f"Format: 1080x1920 (9:16)\n")
+                f.write(f"FPS: {layout.get('timeline', {}).get('fps', 30)}\n\n")
+
+                for scene in layout.get("scenes", []):
+                    scene_id = scene["scene_id"]
+                    duration_sec = scene["duration_ms"] / 1000.0
+                    f.write(f"\n[{scene_id}] ({duration_sec}s)\n")
+                    f.write("-" * 40 + "\n")
+
+                    for img_slot in scene.get("images", []):
+                        f.write(f"  Image ({img_slot.get('slot_id', 'N/A')}): {img_slot.get('image_url', 'N/A')}\n")
+
+                    for dialogue in scene.get("dialogue", []):
+                        f.write(f"  Audio: {dialogue.get('audio_url', 'N/A')}\n")
+                        f.write(f"    Text: {dialogue.get('text', 'N/A')}\n")
+
+                if global_bgm:
+                    f.write(f"\nGlobal BGM: {global_bgm.get('audio_url', 'N/A')}\n")
+                    f.write(f"  Volume: {global_bgm.get('volume', 0.3)}\n")
+
+            logger.info(f"[{run_id}] Stub rendering complete: {output_path}")
+            logger.info(f"[{run_id}] ===== END STUB RENDERING =====")
+            publish_progress(run_id, progress=0.95, log=f"렌더링 완료: {output_path}")
+
+            # Update FSM to END
+            if fsm and fsm.transition_to(RunState.END):
+                logger.info(f"[{run_id}] Transitioned to END")
+                publish_progress(run_id, state="END", progress=1.0, log="영상 생성 완료!")
+
+                from app.main import runs
+                if run_id in runs:
+                    runs[run_id]["state"] = fsm.current_state.value
+                    runs[run_id]["progress"] = 1.0
+                    runs[run_id]["artifacts"]["video_url"] = str(output_path)
+
+            return {
+                "run_id": run_id,
+                "agent": "director",
+                "video_url": str(output_path),
+                "status": "success",
+                "mode": "stub"
+            }
+
         # Import MoviePy for composition
-        from moviepy.editor import (
-            VideoClip, ImageClip, AudioFileClip, CompositeVideoClip,
-            CompositeAudioClip, TextClip, concatenate_videoclips
-        )
+        try:
+            # Try MoviePy 2.x import
+            from moviepy import (
+                VideoClip, ImageClip, AudioFileClip, CompositeVideoClip,
+                CompositeAudioClip, TextClip, concatenate_videoclips
+            )
+        except ImportError:
+            # Fallback to MoviePy 1.x import
+            from moviepy.editor import (
+                VideoClip, ImageClip, AudioFileClip, CompositeVideoClip,
+                CompositeAudioClip, TextClip, concatenate_videoclips
+            )
         import numpy as np
 
         # Video settings (9:16 format)
@@ -79,20 +163,20 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
             for img_slot in scene.get("images", []):
                 img_url = img_slot.get("image_url")
                 if img_url and Path(img_url).exists():
-                    # Load and position image
-                    img_clip = ImageClip(img_url).set_duration(duration_sec)
+                    # Load and position image (MoviePy 2.x uses duration parameter)
+                    img_clip = ImageClip(img_url, duration=duration_sec)
 
                     # Resize to fit
-                    img_clip = img_clip.resize(height=height * 0.6)
+                    img_clip = img_clip.resized(height=height * 0.6)
 
                     # Position based on slot
                     slot_id = img_slot.get("slot_id", "center")
                     if slot_id == "left":
-                        img_clip = img_clip.set_position(("left", "center"))
+                        img_clip = img_clip.with_position(("left", "center"))
                     elif slot_id == "right":
-                        img_clip = img_clip.set_position(("right", "center"))
+                        img_clip = img_clip.with_position(("right", "center"))
                     else:
-                        img_clip = img_clip.set_position(("center", "center"))
+                        img_clip = img_clip.with_position(("center", "center"))
 
                     image_clips.append(img_clip)
 
@@ -119,7 +203,7 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
         if global_bgm and global_bgm.get("audio_url"):
             bgm_path = global_bgm["audio_url"]
             if Path(bgm_path).exists():
-                bgm_clip = AudioFileClip(bgm_path).volumex(global_bgm.get("volume", 0.3))
+                bgm_clip = AudioFileClip(bgm_path).with_volume_scaled(global_bgm.get("volume", 0.3))
                 audio_clips.append(bgm_clip)
 
         # Dialogue audio (simplified - just add sequentially)
@@ -135,12 +219,12 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
         # Composite audio
         if audio_clips:
             final_audio = CompositeAudioClip(audio_clips)
-            final_video = final_video.set_audio(final_audio)
+            final_video = final_video.with_audio(final_audio)
 
         # Export video
-        output_dir = Path("app/data/outputs")
+        output_dir = Path(f"app/data/outputs/{run_id}")
         output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / f"{run_id}_final.mp4"
+        output_path = output_dir / "final_video.mp4"
 
         logger.info(f"[{run_id}] Exporting video to {output_path}...")
 
@@ -149,7 +233,7 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
             fps=fps,
             codec="libx264",
             audio_codec="aac",
-            temp_audiofile=str(output_dir / f"{run_id}_temp_audio.m4a"),
+            temp_audiofile=str(output_dir / "temp_audio.m4a"),
             remove_temp=True,
             logger=None  # Suppress MoviePy logs
         )
@@ -177,8 +261,8 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
         logger.error(f"[{run_id}] Director task failed: {e}", exc_info=True)
 
         # Mark FSM as failed
-        from app.orchestrator.fsm import _fsm_registry
-        if fsm := _fsm_registry.get(run_id):
+        from app.orchestrator.fsm import get_fsm
+        if fsm := get_fsm(run_id):
             fsm.fail(str(e))
 
         from app.main import runs

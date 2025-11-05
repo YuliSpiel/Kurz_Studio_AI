@@ -7,6 +7,7 @@ from pathlib import Path
 
 from app.celery_app import celery
 from app.config import settings
+from app.utils.progress import publish_progress
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ def composer_task(self, run_id: str, json_path: str, spec: dict):
         Dict with generated audio paths
     """
     logger.info(f"[{run_id}] Composer: Starting music generation...")
+    publish_progress(run_id, progress=0.45, log="작곡가: 배경음악 생성 시작...")
 
     try:
         # Load JSON
@@ -52,11 +54,15 @@ def composer_task(self, run_id: str, json_path: str, spec: dict):
 
         logger.info(f"[{run_id}] Generating global BGM: {music_genre}, {total_duration_ms}ms")
 
+        # Generate music in run_id folder
+        audio_dir = Path(f"app/data/outputs/{run_id}/audio")
+        audio_dir.mkdir(parents=True, exist_ok=True)
+
         bgm_path = client.generate_music(
             genre=music_genre,
             mood="cinematic",
             duration_ms=total_duration_ms,
-            output_filename=f"{run_id}_global_bgm.mp3"
+            output_filename=str(audio_dir / "global_bgm.mp3")
         )
 
         # Update JSON
@@ -72,6 +78,8 @@ def composer_task(self, run_id: str, json_path: str, spec: dict):
             }
         else:
             layout["global_bgm"]["audio_url"] = str(bgm_path)
+
+        publish_progress(run_id, progress=0.5, log=f"작곡가: 배경음악 생성 완료 - {bgm_path}")
 
         audio_results.append({
             "type": "bgm",
