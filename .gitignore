@@ -30,6 +30,7 @@ wheels/
 *.egg
 .venv/
 venv/
+kvenv/
 ENV/
 env/
 outputs/
