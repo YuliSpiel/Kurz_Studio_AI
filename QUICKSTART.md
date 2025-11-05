@@ -11,12 +11,22 @@ cp .env.example .env
 
 `.env` 파일을 열고 최소 설정:
 ```bash
-# ComfyUI 주소 (필수)
+# OpenAI API (필수 - 스토리 생성용)
+OPENAI_API_KEY=sk-proj-your_key_here
+
+# ComfyUI 주소 (이미지 생성용)
 COMFY_URL=http://localhost:8188
 
-# TTS (선택 - 없으면 stub 사용)
-ELEVENLABS_API_KEY=your_key_here
+# ElevenLabs API (TTS/음성 생성용)
+ELEVENLABS_API_KEY=sk_your_key_here
+
+# Provider 설정
+IMAGE_PROVIDER=comfyui
+TTS_PROVIDER=elevenlabs
+MUSIC_PROVIDER=elevenlabs
 ```
+
+> **참고**: ElevenLabs API 키 설정 가이드는 [ELEVENLABS_FIX.md](ELEVENLABS_FIX.md) 참조
 
 ### 2. 백엔드 실행 (3개 터미널)
 
@@ -75,6 +85,22 @@ python main.py --listen 0.0.0.0 --port 8188
 
 4. 완료 후 영상 재생/다운로드
 
+## 테스트
+
+### 간단한 모듈 테스트
+```bash
+# ElevenLabs TTS 테스트
+python test_tts_simple.py
+
+# 전체 모듈 테스트 (Jupyter 노트북)
+jupyter notebook simple_test.ipynb
+```
+
+### API 키 검증
+```bash
+python verify_api_key.py
+```
+
 ## 문제 해결
 
 ### Redis 연결 안 됨
@@ -91,6 +117,9 @@ celery -A app.celery_app worker --loglevel=debug
 
 ### ComfyUI 없을 때
 ComfyUI 없이도 전체 플로우 테스트 가능 (placeholder 이미지 생성)
+
+### ElevenLabs TTS 에러
+자세한 트러블슈팅은 [ELEVENLABS_FIX.md](ELEVENLABS_FIX.md) 참조
 
 ## 다음 단계
 
