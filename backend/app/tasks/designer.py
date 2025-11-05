@@ -39,7 +39,26 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
 
         # Get image provider
         client = None
-        if settings.IMAGE_PROVIDER == "comfyui":
+        provider = settings.IMAGE_PROVIDER
+
+        if provider == "banana":
+            # Banana provider
+            if settings.BANANA_API_KEY and settings.BANANA_MODEL_KEY:
+                try:
+                    from app.providers.images.banana_client import BananaClient
+                    client = BananaClient(
+                        api_key=settings.BANANA_API_KEY,
+                        model_key=settings.BANANA_MODEL_KEY
+                    )
+                    logger.info(f"[{run_id}] Using Banana image provider")
+                except Exception as e:
+                    logger.warning(f"Banana not available: {e}, using stub images")
+                    client = None
+            else:
+                logger.warning("BANANA_API_KEY or BANANA_MODEL_KEY not set, using stub")
+
+        elif provider == "comfyui":
+            # ComfyUI provider
             try:
                 from app.providers.images.comfyui_client import ComfyUIClient
                 client = ComfyUIClient(base_url=settings.COMFY_URL)
@@ -47,12 +66,13 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
                 import httpx
                 response = httpx.get(f"{settings.COMFY_URL}/system_stats", timeout=2.0)
                 response.raise_for_status()
+                logger.info(f"[{run_id}] Using ComfyUI image provider")
             except Exception as e:
                 logger.warning(f"ComfyUI not available: {e}, using stub images")
                 client = None
 
         if not client:
-            logger.warning("Using stub image generation (no ComfyUI)")
+            logger.warning("Using stub image generation (no provider available)")
             # Use stub - create placeholder images
 
         image_results = []
@@ -92,14 +112,24 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
                 logger.info(f"[{run_id}] Generating {scene_id}/{slot_id}: {prompt[:50]}...")
 
                 if client:
-                    image_path = client.generate_image(
-                        prompt=prompt,
-                        seed=seed,
-                        lora_name=settings.ART_STYLE_LORA,
-                        lora_strength=spec.get("lora_strength", 0.8),
-                        reference_images=spec.get("reference_images", []),
-                        output_prefix=f"{run_id}_{scene_id}_{slot_id}"
-                    )
+                    # Generate image based on provider type
+                    if provider == "banana":
+                        image_path = client.generate_image(
+                            prompt=prompt,
+                            seed=seed,
+                            width=512,
+                            height=768,  # 9:16 ratio
+                            output_prefix=f"{run_id}_{scene_id}_{slot_id}"
+                        )
+                    elif provider == "comfyui":
+                        image_path = client.generate_image(
+                            prompt=prompt,
+                            seed=seed,
+                            lora_name=settings.ART_STYLE_LORA,
+                            lora_strength=spec.get("lora_strength", 0.8),
+                            reference_images=spec.get("reference_images", []),
+                            output_prefix=f"{run_id}_{scene_id}_{slot_id}"
+                        )
                 else:
                     # Create stub image (1x1 pixel PNG)
                     import base64

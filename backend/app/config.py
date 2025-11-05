@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     COMFY_WORKFLOW: str = "backend/app/providers/images/workflows/flux_omni_lora.json"
 
     # Provider switches
-    IMAGE_PROVIDER: Literal["comfyui"] = "comfyui"
+    IMAGE_PROVIDER: Literal["comfyui", "banana"] = "banana"
     TTS_PROVIDER: Literal["elevenlabs", "playht"] = "elevenlabs"
     MUSIC_PROVIDER: Literal["elevenlabs", "mubert", "udio", "suno"] = "elevenlabs"
 
@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     PLAYHT_USER_ID: str = ""
     MUBERT_LICENSE: str = ""
     UDIO_API_KEY: str = ""
+
+    # Banana (Image Generation)
+    BANANA_API_KEY: str = ""
+    BANANA_MODEL_KEY: str = ""
 
     # S3/R2 Storage (optional)
     S3_ENDPOINT: str = ""

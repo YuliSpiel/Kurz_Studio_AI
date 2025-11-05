@@ -15,15 +15,15 @@ from app.utils.sfx_tags import extract_sfx_tags
 logger = logging.getLogger(__name__)
 
 
-def generate_csv_from_prompt(
+def generate_plot_from_prompt(
     run_id: str,
     prompt: str,
     num_characters: int,
     num_cuts: int,
     mode: str = "story"
-) -> Path:
+) -> tuple[Path, Path]:
     """
-    Generate plot CSV from user prompt using GPT-4o-mini.
+    Generate characters.json and plot.csv from user prompt using GPT-4o-mini.
 
     Args:
         run_id: Run identifier
@@ -33,7 +33,7 @@ def generate_csv_from_prompt(
         mode: story or ad
 
     Returns:
-        Path to generated CSV file
+        Tuple of (characters_json_path, plot_csv_path)
     """
     logger.info(f"Generating CSV for prompt: {prompt[:50]}...")
 
@@ -41,10 +41,10 @@ def generate_csv_from_prompt(
     output_dir = Path(f"app/data/outputs/{run_id}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    csv_filename = "plot.csv"
-    csv_path = output_dir / csv_filename
+    characters_path = output_dir / "characters.json"
+    csv_path = output_dir / "plot.csv"
 
-    # GPT-4o-mini로 CSV 생성 시도
+    # GPT-4o-mini로 생성 시도
     try:
         from openai import OpenAI
         from app.config import settings
@@ -55,28 +55,36 @@ def generate_csv_from_prompt(
 
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
-        # 시스템 프롬프트 작성
-        system_prompt = f"""당신은 숏폼 영상 콘텐츠 시나리오 작가입니다.
-사용자의 요청을 {num_cuts}개 장면으로 나누어 {'스토리' if mode == 'story' else '광고 콘텐츠'}를 만들어주세요.
-등장인물은 {num_characters}명입니다.
+        # 1단계: 캐릭터 정의 생성
+        char_system_prompt = f"""당신은 숏폼 영상 콘텐츠의 캐릭터 디자이너입니다.
+사용자의 요청에 맞는 {num_characters}명의 캐릭터를 만들어주세요.
 
-각 장면마다 다음을 포함해야 합니다:
-- scene_id: scene_1, scene_2, ... 형식 (이 필드로 장면 순서가 결정됨)
-- char_id: char_1, char_2 (등장인물 ID)
-- char_name: 캐릭터 이름 (창의적으로)
-- text: 대사 또는 해설 내용 (큰따옴표 없이 텍스트만 입력)
-- text_type: dialogue (대사) 또는 narration (해설)
-- emotion: neutral, happy, sad, excited, angry, surprised 중 하나
-- subtitle_position: top 또는 bottom
-- duration_ms: 장면 지속시간 (보통 4000-6000)
+각 캐릭터마다 다음 정보를 JSON 형식으로 제공하세요:
+- char_id: char_1, char_2, ... 형식
+- name: 캐릭터 이름 (창의적으로)
+- appearance: 외형 묘사 (이미지 생성에 사용됩니다. 상세하게 작성)
+- personality: 성격/특징
+- voice_profile: "default" (고정값)
+- seed: char_1은 1002, char_2는 1003, ... 순서대로
 
 **중요**:
-- 반드시 CSV 형식으로만 출력하세요. 헤더와 데이터만 포함하고 다른 설명은 넣지 마세요.
-- text 필드에는 큰따옴표를 넣지 마세요 (렌더링 시 자동 추가됨)
-- text_type이 dialogue면 캐릭터 대사, narration이면 해설/나레이션입니다
+- 반드시 JSON 형식으로만 출력하세요
+- appearance는 이미지 생성 프롬프트로 사용되므로 시각적 특징을 상세히 작성
+- 해설자인 경우 appearance를 "음성만 있는 해설자 (이미지 없음)"으로 설정
 
-CSV 형식:
-scene_id,char_id,char_name,text,text_type,emotion,subtitle_position,duration_ms"""
+JSON 형식:
+{{
+  "characters": [
+    {{
+      "char_id": "char_1",
+      "name": "캐릭터 이름",
+      "appearance": "상세한 외형 묘사",
+      "personality": "성격 설명",
+      "voice_profile": "default",
+      "seed": 1002
+    }}
+  ]
+}}"""
 
         logger.info(f"Calling GPT-4o-mini for plot generation...")
 
@@ -338,3 +346,13 @@ def csv_to_json(
 
     logger.info(f"JSON generated: {json_path}")
     return json_path
+
+
+# =============================================================================
+# Backward Compatibility Aliases (Deprecated)
+# =============================================================================
+# These aliases are provided for backward compatibility with older code.
+# Please use the new functions from plot_generator.py and json_converter.py instead.
+
+# Deprecated: Use plot_generator.generate_plot_with_characters() instead
+generate_csv_from_prompt = generate_plot_from_prompt
