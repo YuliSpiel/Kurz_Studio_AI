@@ -75,6 +75,8 @@ async def redis_listener(): # Redis에서 진행도 메시지를 받아서 WebSo
                                 runs[run_id]["progress"] = data["progress"]
                             if "log" in data:
                                 runs[run_id]["logs"].append(data["log"])
+                            if "artifacts" in data:
+                                runs[run_id]["artifacts"].update(data["artifacts"])
 
                         # Broadcast to WebSocket clients (include artifacts)
                         await broadcast_to_websockets(

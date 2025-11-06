@@ -270,19 +270,34 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
         global_bgm = layout.get("global_bgm")
         if global_bgm and global_bgm.get("audio_url"):
             bgm_path = global_bgm["audio_url"]
-            if Path(bgm_path).exists():
-                bgm_clip = AudioFileClip(bgm_path).with_volume_scaled(global_bgm.get("volume", 0.3))
-                audio_clips.append(bgm_clip)
+            if Path(bgm_path).exists() and Path(bgm_path).stat().st_size > 100:
+                try:
+                    bgm_clip = AudioFileClip(bgm_path).with_volume_scaled(global_bgm.get("volume", 0.3))
+                    audio_clips.append(bgm_clip)
+                    logger.info(f"[{run_id}] Added BGM: {bgm_path}")
+                except Exception as e:
+                    logger.warning(f"[{run_id}] Failed to load BGM {bgm_path}: {e}")
+            else:
+                logger.warning(f"[{run_id}] Skipping BGM (file too small or missing): {bgm_path}")
 
         # Text audio (voice/narration) - simplified
         for scene in layout.get("scenes", []):
             for text_line in scene.get("texts", []):
                 audio_url = text_line.get("audio_url")
                 if audio_url and Path(audio_url).exists():
-                    voice_clip = AudioFileClip(audio_url)
-                    # Set start time based on text_line["start_ms"]
-                    # For simplicity, add to composite
-                    audio_clips.append(voice_clip)
+                    # Check file size (skip stub files < 100 bytes)
+                    if Path(audio_url).stat().st_size < 100:
+                        logger.warning(f"[{run_id}] Skipping voice audio (stub file): {audio_url}")
+                        continue
+
+                    try:
+                        voice_clip = AudioFileClip(audio_url)
+                        # Set start time based on text_line["start_ms"]
+                        # For simplicity, add to composite
+                        audio_clips.append(voice_clip)
+                        logger.info(f"[{run_id}] Added voice: {audio_url}")
+                    except Exception as e:
+                        logger.warning(f"[{run_id}] Failed to load voice {audio_url}: {e}")
 
         # Composite audio
         if audio_clips:
@@ -295,6 +310,7 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
         output_path = output_dir / "final_video.mp4"
 
         logger.info(f"[{run_id}] Exporting video to {output_path}...")
+        publish_progress(run_id, progress=0.78, log="영상 파일 내보내기 중...")
 
         final_video.write_videofile(
             str(output_path),
@@ -303,7 +319,7 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
             audio_codec="aac",
             temp_audiofile=str(output_dir / "temp_audio.m4a"),
             remove_temp=True,
-            logger=None  # Suppress MoviePy logs
+            logger="bar"  # Show progress bar
         )
 
         logger.info(f"[{run_id}] Video exported: {output_path}")
@@ -312,19 +328,21 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
         # Transition to QA
         if fsm and fsm.transition_to(RunState.QA):
             logger.info(f"[{run_id}] Transitioned to QA")
-            publish_progress(run_id, state="QA", progress=0.82, log="QA 검수 단계로 전환...")
 
-            from app.main import runs
-            if run_id in runs:
-                runs[run_id]["state"] = fsm.current_state.value
-                runs[run_id]["progress"] = 0.82
-                # Set HTTP URL path for frontend to access video
-                runs[run_id]["artifacts"]["video_url"] = f"/outputs/{run_id}/final_video.mp4"
+            # Publish with video_url artifact
+            video_url = f"/outputs/{run_id}/final_video.mp4"
+            publish_progress(
+                run_id,
+                state="QA",
+                progress=0.82,
+                log="QA 검수 단계로 전환...",
+                artifacts={"video_url": video_url}
+            )
 
             # Trigger QA task
             from app.tasks.qa import qa_task
             qa_task.apply_async(args=[run_id, str(json_path), str(output_path)])
-            logger.info(f"[{run_id}] QA task triggered")
+            logger.info(f"[{run_id}] QA task triggered with video_url: {video_url}")
 
         return {
             "run_id": run_id,

@@ -154,17 +154,20 @@ def qa_task(self, run_id: str, json_path: str, video_path: str):
             # Transition to END
             if fsm.transition_to(RunState.END):
                 logger.info(f"[{run_id}] Transitioned to END")
-                publish_progress(run_id, state="END", progress=1.0, log="영상 생성 완료! 🎉")
 
-                from app.main import runs
-                if run_id in runs:
-                    runs[run_id]["state"] = fsm.current_state.value
-                    runs[run_id]["progress"] = 1.0
-                    # Keep video_url from director, add qa_result
-                    runs[run_id]["artifacts"]["qa_result"] = qa_results
-                    # Ensure video_url is set
-                    if "video_url" not in runs[run_id]["artifacts"]:
-                        runs[run_id]["artifacts"]["video_url"] = f"/outputs/{run_id}/final_video.mp4"
+                # Publish final state with video_url and qa_result
+                video_url = f"/outputs/{run_id}/final_video.mp4"
+                publish_progress(
+                    run_id,
+                    state="END",
+                    progress=1.0,
+                    log="영상 생성 완료! 🎉",
+                    artifacts={
+                        "video_url": video_url,
+                        "qa_result": qa_results
+                    }
+                )
+                logger.info(f"[{run_id}] Published END state with video_url: {video_url}")
         else:
             logger.warning(f"[{run_id}] QA: ❌ Checks FAILED - Issues: {qa_results['issues']}")
             publish_progress(

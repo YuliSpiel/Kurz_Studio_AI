@@ -30,7 +30,8 @@ def publish_progress(
     run_id: str,
     state: str = None,
     progress: float = None,
-    log: str = None
+    log: str = None,
+    artifacts: dict = None
 ):
     """
     Publish progress update to Redis pub/sub.
@@ -43,6 +44,7 @@ def publish_progress(
         state: FSM state (optional)
         progress: Progress value 0.0-1.0 (optional)
         log: Log message (optional)
+        artifacts: Artifacts dict to update (optional)
     """
     try:
         client = get_redis_client()
@@ -54,6 +56,8 @@ def publish_progress(
             message["progress"] = progress
         if log:
             message["log"] = log
+        if artifacts:
+            message["artifacts"] = artifacts
 
         # Publish to Redis channel
         client.publish(
@@ -61,7 +65,7 @@ def publish_progress(
             orjson.dumps(message)
         )
 
-        logger.debug(f"[{run_id}] Published progress: state={state}, progress={progress}")
+        logger.debug(f"[{run_id}] Published progress: state={state}, progress={progress}, artifacts={bool(artifacts)}")
 
     except Exception as e:
         logger.error(f"Failed to publish progress for {run_id}: {e}")
