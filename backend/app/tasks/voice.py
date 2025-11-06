@@ -88,13 +88,41 @@ def voice_task(self, run_id: str, json_path: str, spec: dict):
                     role = char_data.get("role", "")
                     personality = char_data.get("personality", "")
 
-                    # Select voice based on gender and role
+                    # Select voice based on gender and personality/role
                     voice_list = voices_config.get("voices", {}).get(gender, [])
                     if voice_list:
-                        # Simple matching: pick first voice for this gender
-                        # TODO: Could enhance with role/personality matching
-                        voice_profile = voice_list[0]["voice_id"]
-                        logger.info(f"[{run_id}] Matched {char_id} ({gender}) to voice: {voice_list[0]['name']}")
+                        # Smart matching: match personality keywords to voice descriptions
+                        best_voice = voice_list[0]  # Default to first
+
+                        # Keywords for voice matching
+                        personality_lower = personality.lower()
+                        role_lower = role.lower()
+
+                        for voice in voice_list:
+                            voice_desc = voice.get("description", "").lower()
+                            voice_roles = [r.lower() for r in voice.get("recommended_roles", [])]
+
+                            # Match based on personality keywords
+                            if any(keyword in personality_lower for keyword in ["밝", "활발", "친밀", "따뜻"]):
+                                if "밝" in voice_desc or "따뜻" in voice_desc or "친밀" in voice_desc:
+                                    best_voice = voice
+                                    break
+                            elif any(keyword in personality_lower for keyword in ["전문", "냉철", "이성", "쿨"]):
+                                if "쿨" in voice_desc or "세련" in voice_desc or "전문" in voice_desc:
+                                    best_voice = voice
+                                    break
+                            elif any(keyword in personality_lower for keyword in ["느린", "묵직", "차분"]):
+                                if "느린" in voice_desc or "묵직" in voice_desc:
+                                    best_voice = voice
+                                    break
+
+                            # Match based on role
+                            if role_lower and any(role_keyword in " ".join(voice_roles) for role_keyword in role_lower.split()):
+                                best_voice = voice
+                                break
+
+                        voice_profile = best_voice["voice_id"]
+                        logger.info(f"[{run_id}] Matched {char_id} ({gender}, {personality[:20]}...) to voice: {best_voice['name']}")
                     else:
                         voice_profile = char.get("voice_profile", "default")
                 else:

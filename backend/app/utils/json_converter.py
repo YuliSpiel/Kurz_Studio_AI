@@ -173,7 +173,8 @@ def convert_plot_to_json(
                 char1_pose = first_row.get("char1_pose", "standing")
                 char1_pos = first_row.get("char1_pos", "center")
 
-                char1_prompt = f"{char1_appearance}, {char1_expr} expression, {char1_pose} pose" if char1_appearance else ""
+                # Character image: no background, character only
+                char1_prompt = f"{char1_appearance}, {char1_expr} expression, {char1_pose} pose, transparent background, character cutout, full body" if char1_appearance else ""
 
                 char1_slot = ImageSlot(
                     slot_id=f"{char1_id}_slot",
@@ -199,7 +200,8 @@ def convert_plot_to_json(
                 char2_pose = first_row.get("char2_pose", "standing")
                 char2_pos = first_row.get("char2_pos", "right")
 
-                char2_prompt = f"{char2_appearance}, {char2_expr} expression, {char2_pose} pose" if char2_appearance else ""
+                # Character image: no background, character only
+                char2_prompt = f"{char2_appearance}, {char2_expr} expression, {char2_pose} pose, transparent background, character cutout, full body" if char2_appearance else ""
 
                 char2_slot = ImageSlot(
                     slot_id=f"{char2_id}_slot",
@@ -238,11 +240,11 @@ def convert_plot_to_json(
             expression = first_row.get("expression", "neutral")
             pose = first_row.get("pose", "standing")
 
-            # Build image prompt
+            # Build image prompt (character only, no background for cutout composition)
             if char_appearance and expression != "none" and pose != "none":
-                image_prompt = f"{char_appearance}, {expression} expression, {pose} pose"
+                image_prompt = f"{char_appearance}, {expression} expression, {pose} pose, transparent background, character cutout, full body"
             elif char_appearance:
-                image_prompt = char_appearance
+                image_prompt = f"{char_appearance}, transparent background, character cutout, full body"
             else:
                 image_prompt = ""
 
