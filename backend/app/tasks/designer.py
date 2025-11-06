@@ -100,55 +100,75 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
                 slot_id = img_slot["slot_id"]
                 img_type = img_type = img_slot["type"]
 
-                # Prepare prompt based on type
-                if img_type == "character":
-                    # Get character info
-                    char_id = img_slot.get("ref_id")
-                    char = next(
-                        (c for c in layout.get("characters", []) if c["char_id"] == char_id),
-                        None
-                    )
-                    if char:
-                        art_style = spec.get('art_style', '파스텔 수채화')
+                # Check if image_prompt is pre-computed (Story Mode)
+                if "image_prompt" in img_slot and img_slot["image_prompt"]:
+                    # Use pre-computed prompt from json_converter
+                    art_style = spec.get('art_style', '파스텔 수채화')
+                    base_prompt = img_slot["image_prompt"]
 
-                        # Get appearance from characters.json
-                        appearance = char['persona']  # fallback
-                        if characters_data:
-                            char_data = next(
-                                (c for c in characters_data.get("characters", []) if c["char_id"] == char_id),
-                                None
-                            )
-                            if char_data:
-                                appearance = char_data.get("appearance", char['persona'])
-
-                        # Get expression/pose from plot.json for this scene
-                        expression = "neutral"
-                        pose = "standing"
-                        if plot_data:
-                            scene_data = next(
-                                (s for s in plot_data.get("scenes", []) if s["scene_id"] == scene_id),
-                                None
-                            )
-                            if scene_data and scene_data.get("char_id") == char_id:
-                                expression = scene_data.get("expression", "neutral")
-                                pose = scene_data.get("pose", "standing")
-
-                        # Build prompt: art_style + appearance + expression + pose
-                        if expression != "none" and pose != "none":
-                            prompt = f"{art_style}, {appearance}, {expression} expression, {pose} pose"
-                        else:
-                            prompt = f"{art_style}, {appearance}"
-
-                        seed = char.get("seed", settings.BASE_CHAR_SEED)
+                    if img_type == "background":
+                        # Background image: use prompt directly with art style
+                        prompt = f"{art_style}, {base_prompt}"
+                        seed = scene.get("bg_seed", settings.BG_SEED_BASE)
                     else:
-                        prompt = f"character, {spec.get('art_style', '')}"
-                        seed = settings.BASE_CHAR_SEED
-                elif img_type == "background":
-                    prompt = f"background scene, {spec.get('art_style', '')}"
-                    seed = scene.get("bg_seed", settings.BG_SEED_BASE)
+                        # Character image: prompt already includes appearance + expression + pose
+                        prompt = f"{art_style}, {base_prompt}"
+                        char_id = img_slot.get("ref_id")
+                        char = next(
+                            (c for c in layout.get("characters", []) if c["char_id"] == char_id),
+                            None
+                        )
+                        seed = char.get("seed", settings.BASE_CHAR_SEED) if char else settings.BASE_CHAR_SEED
                 else:
-                    prompt = f"prop, {spec.get('art_style', '')}"
-                    seed = settings.BG_SEED_BASE + 100
+                    # Legacy mode: Build prompt from scratch
+                    if img_type == "character":
+                        # Get character info
+                        char_id = img_slot.get("ref_id")
+                        char = next(
+                            (c for c in layout.get("characters", []) if c["char_id"] == char_id),
+                            None
+                        )
+                        if char:
+                            art_style = spec.get('art_style', '파스텔 수채화')
+
+                            # Get appearance from characters.json
+                            appearance = char['persona']  # fallback
+                            if characters_data:
+                                char_data = next(
+                                    (c for c in characters_data.get("characters", []) if c["char_id"] == char_id),
+                                    None
+                                )
+                                if char_data:
+                                    appearance = char_data.get("appearance", char['persona'])
+
+                            # Get expression/pose from plot.json for this scene
+                            expression = "neutral"
+                            pose = "standing"
+                            if plot_data:
+                                scene_data = next(
+                                    (s for s in plot_data.get("scenes", []) if s["scene_id"] == scene_id),
+                                    None
+                                )
+                                if scene_data and scene_data.get("char_id") == char_id:
+                                    expression = scene_data.get("expression", "neutral")
+                                    pose = scene_data.get("pose", "standing")
+
+                            # Build prompt: art_style + appearance + expression + pose
+                            if expression != "none" and pose != "none":
+                                prompt = f"{art_style}, {appearance}, {expression} expression, {pose} pose"
+                            else:
+                                prompt = f"{art_style}, {appearance}"
+
+                            seed = char.get("seed", settings.BASE_CHAR_SEED)
+                        else:
+                            prompt = f"character, {spec.get('art_style', '')}"
+                            seed = settings.BASE_CHAR_SEED
+                    elif img_type == "background":
+                        prompt = f"background scene, {spec.get('art_style', '')}"
+                        seed = scene.get("bg_seed", settings.BG_SEED_BASE)
+                    else:
+                        prompt = f"prop, {spec.get('art_style', '')}"
+                        seed = settings.BG_SEED_BASE + 100
 
                 # Generate image
                 logger.info(f"[{run_id}] Generating {scene_id}/{slot_id}: {prompt[:50]}...")
