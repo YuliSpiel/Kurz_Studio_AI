@@ -10,7 +10,9 @@
       "Bash(git checkout:*)",
       "Bash(source kvenv/bin/activate)",
       "Bash(pip install:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(convert:*)",
+      "Bash(kvenv/bin/python:*)"
     ],
     "deny": [],
     "ask": []
