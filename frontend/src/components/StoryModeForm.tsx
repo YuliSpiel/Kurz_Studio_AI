@@ -88,11 +88,15 @@ export default function StoryModeForm({ onRunCreated }: StoryModeFormProps) {
         generalReferenceImage = await uploadReferenceImage(referenceImage)
       }
 
+      // Calculate num_cuts based on story length (GPT will use this as a guide)
+      const storyLength = storyText.length
+      const numCuts = storyLength < 200 ? 3 : storyLength < 500 ? 5 : 8
+
       const result = await createRun({
         mode: 'story',
         prompt: storyText,
         num_characters: characters.length,
-        num_cuts: 0, // Will be determined by story length
+        num_cuts: numCuts,
         art_style: stylePreset,
         music_genre: 'cinematic',
         characters: characterData,
