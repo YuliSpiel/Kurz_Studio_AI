@@ -280,8 +280,11 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
             else:
                 logger.warning(f"[{run_id}] Skipping BGM (file too small or missing): {bgm_path}")
 
-        # Text audio (voice/narration) - simplified
+        # Text audio (voice/narration) with proper timing
+        scene_start_time = 0.0  # Cumulative start time for each scene
         for scene in layout.get("scenes", []):
+            scene_duration = scene["duration_ms"] / 1000.0
+
             for text_line in scene.get("texts", []):
                 audio_url = text_line.get("audio_url")
                 if audio_url and Path(audio_url).exists():
@@ -292,12 +295,21 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
 
                     try:
                         voice_clip = AudioFileClip(audio_url)
-                        # Set start time based on text_line["start_ms"]
-                        # For simplicity, add to composite
+
+                        # Calculate start time: scene start + text line start within scene
+                        text_start_in_scene = text_line.get("start_ms", 0) / 1000.0
+                        absolute_start_time = scene_start_time + text_start_in_scene
+
+                        # Set start time for this voice clip
+                        voice_clip = voice_clip.with_start(absolute_start_time)
                         audio_clips.append(voice_clip)
-                        logger.info(f"[{run_id}] Added voice: {audio_url}")
+
+                        logger.info(f"[{run_id}] Added voice at {absolute_start_time:.2f}s: {audio_url}")
                     except Exception as e:
                         logger.warning(f"[{run_id}] Failed to load voice {audio_url}: {e}")
+
+            # Move to next scene
+            scene_start_time += scene_duration
 
         # Composite audio
         if audio_clips:
