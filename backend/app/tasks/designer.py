@@ -212,6 +212,30 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
                         f.write(stub_png)
                     logger.info(f"[{run_id}] Created stub image: {image_path}")
                     publish_progress(run_id, log=f"디자이너: stub 이미지 생성 - {scene_id}_{slot_id}")
+                else:
+                    # Apply background removal to character images (not background)
+                    if img_type == "character" and Path(image_path).exists():
+                        try:
+                            from rembg import remove
+                            from PIL import Image
+
+                            logger.info(f"[{run_id}] Removing background from character image: {image_path}")
+
+                            # Load image
+                            input_image = Image.open(image_path)
+
+                            # Remove background
+                            output_image = remove(input_image)
+
+                            # Save as PNG with alpha
+                            output_path = Path(image_path).with_suffix('.png')
+                            output_image.save(output_path, 'PNG')
+
+                            image_path = output_path
+                            logger.info(f"[{run_id}] Background removed: {image_path}")
+                            publish_progress(run_id, log=f"디자이너: 배경 제거 완료 - {scene_id}_{slot_id}")
+                        except Exception as e:
+                            logger.warning(f"[{run_id}] Background removal failed: {e}, using original image")
 
                 # Update JSON with image path
                 img_slot["image_url"] = str(image_path)
