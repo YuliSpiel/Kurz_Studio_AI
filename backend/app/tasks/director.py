@@ -98,7 +98,19 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
                 for audio_result in result["audio"]:
                     if audio_result["type"] == "bgm":
                         bgm_path = audio_result["path"]
-                        if layout.get("global_bgm"):
+                        # Create global_bgm if it doesn't exist
+                        if not layout.get("global_bgm"):
+                            layout["global_bgm"] = {
+                                "bgm_id": audio_result.get("id", "global_bgm"),
+                                "genre": "ambient",
+                                "mood": "cinematic",
+                                "audio_url": bgm_path,
+                                "start_ms": 0,
+                                "duration_ms": layout.get("timeline", {}).get("total_duration_ms", 30000),
+                                "volume": 0.3
+                            }
+                            logger.info(f"[{run_id}] Created global BGM entry: {bgm_path}")
+                        else:
                             layout["global_bgm"]["audio_url"] = bgm_path
                             logger.info(f"[{run_id}] Updated global BGM: {bgm_path}")
 
