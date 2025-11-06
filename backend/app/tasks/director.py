@@ -204,6 +204,9 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
             )
         import numpy as np
 
+        # Korean font path for subtitles
+        KOREAN_FONT = "/System/Library/Fonts/Supplemental/AppleGothic.ttf"
+
         # Video settings (9:16 format)
         width = 1080
         height = 1920
@@ -247,15 +250,47 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
 
                     image_clips.append(img_clip)
 
-            # Composite video
+            # Composite video (without text yet)
             video_clip = CompositeVideoClip(image_clips, size=(width, height))
 
-            # Add text overlays (subtitles) - simplified
+            # Add text overlays (subtitles)
+            text_clips = []
             for text_line in scene.get("texts", []):
-                # MoviePy TextClip requires ImageMagick (complex setup)
-                # For now, skip or use simple overlay
-                # TODO: Add TextClip with text_line["text"], text_line["position"]
-                pass
+                text_content = text_line.get("text", "").strip('"')  # Remove quotes if present
+                if not text_content:
+                    continue
+
+                try:
+                    # Create text clip
+                    txt_clip = TextClip(
+                        text=text_content,
+                        font=KOREAN_FONT,
+                        font_size=60,
+                        color='white',
+                        stroke_color='black',
+                        stroke_width=2,
+                        duration=duration_sec
+                    )
+
+                    # Position text based on layout
+                    position = text_line.get("position", "bottom")
+                    if position == "top":
+                        txt_position = ('center', height * 0.1)
+                    elif position == "center":
+                        txt_position = ('center', 'center')
+                    else:  # bottom
+                        txt_position = ('center', height * 0.85)
+
+                    txt_clip = txt_clip.with_position(txt_position)
+                    text_clips.append(txt_clip)
+
+                    logger.info(f"[{run_id}] Added subtitle: {text_content[:30]}...")
+                except Exception as e:
+                    logger.warning(f"[{run_id}] Failed to create text overlay: {e}")
+
+            # Combine video with text overlays
+            if text_clips:
+                video_clip = CompositeVideoClip([video_clip] + text_clips, size=(width, height))
 
             scenes_clips.append(video_clip)
 
