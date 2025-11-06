@@ -1,5 +1,21 @@
 # AutoShorts 워크플로 설명
 
+## ⚠️ IMPORTANT: Celery Worker Configuration
+
+**Before running AutoShorts, ensure your Celery worker is configured for parallel execution!**
+
+```bash
+# Start worker with gevent pool (REQUIRED for parallel asset generation)
+cd backend
+./start_worker.sh
+```
+
+**DO NOT use `--pool=solo`** as it disables parallel execution and breaks the chord pattern.
+
+See [CELERY_SETUP.md](./CELERY_SETUP.md) for detailed configuration guide.
+
+---
+
 ## FSM (Finite State Machine) 오케스트레이션
 
 AutoShorts는 FSM 기반 오케스트레이션을 사용하여 생성 파이프라인을 관리합니다.
