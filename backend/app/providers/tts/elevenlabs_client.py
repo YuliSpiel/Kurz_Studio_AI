@@ -51,17 +51,17 @@ class ElevenLabsClient(TTSProvider):
         logger.info(f"Generating speech with ElevenLabs: {text[:50]}...")
 
         try:
-            # If voice_id is "default", use a standard voice
-            if voice_id == "default":
-                voice_id = "21m00Tcm4TlvDq8ikWAM"  # Rachel (default voice)
+            # If voice_id is "default", use yuna (Korean voice)
+            if voice_id == "default" or voice_id == "yuna":
+                voice_id = "xi3rF0t7dg7uN2M0WUhr"  # yuna (Korean voice)
 
             # API endpoint
             url = f"{self.BASE_URL}/text-to-speech/{voice_id}"
 
-            # Request payload
+            # Request payload - use multilingual model for Korean support
             payload = {
                 "text": text,
-                "model_id": "eleven_monolingual_v1",
+                "model_id": "eleven_multilingual_v2",
                 "voice_settings": {
                     "stability": 0.5,
                     "similarity_boost": 0.75
