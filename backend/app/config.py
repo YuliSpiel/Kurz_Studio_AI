@@ -4,6 +4,12 @@ Loads environment variables and provides provider switching logic.
 """
 from pydantic_settings import BaseSettings
 from typing import Literal
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env from project root
+env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 
 class Settings(BaseSettings):
@@ -54,7 +60,8 @@ class Settings(BaseSettings):
     S3_BUCKET: str = ""
 
     class Config:
-        env_file = ".env"
+        # Look for .env in current dir, parent dir, or grandparent dir
+        env_file = str(Path(__file__).resolve().parent.parent.parent / ".env")
         case_sensitive = True
 
 
