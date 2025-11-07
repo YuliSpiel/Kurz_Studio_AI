@@ -6,7 +6,7 @@ interface RunFormProps {
 }
 
 export default function RunForm({ onRunCreated }: RunFormProps) {
-  const [mode, setMode] = useState<'story' | 'ad'>('story')
+  const [mode, setMode] = useState<'general' | 'story' | 'ad'>('general')
   const [prompt, setPrompt] = useState('')
   const [numCharacters, setNumCharacters] = useState<1 | 2>(1)
   const [numCuts, setNumCuts] = useState(3)
@@ -59,7 +59,8 @@ export default function RunForm({ onRunCreated }: RunFormProps) {
 
       <div className="form-group">
         <label>모드</label>
-        <select value={mode} onChange={(e) => setMode(e.target.value as 'story' | 'ad')}>
+        <select value={mode} onChange={(e) => setMode(e.target.value as 'general' | 'story' | 'ad')}>
+          <option value="general">일반</option>
           <option value="story">스토리텔링</option>
           <option value="ad">광고</option>
         </select>

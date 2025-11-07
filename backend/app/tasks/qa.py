@@ -102,9 +102,9 @@ def qa_task(self, run_id: str, json_path: str, video_path: str):
         scenes = layout.get("scenes", [])
         for scene in scenes:
             scene_id = scene.get("scene_id", "unknown")
-            image_slots = scene.get("image_slots", [])
+            images = scene.get("images", [])  # Changed from image_slots to images
 
-            for slot in image_slots:
+            for slot in images:
                 image_url = slot.get("image_url")
                 if not image_url or not Path(image_url).exists():
                     qa_results["checks"].append({

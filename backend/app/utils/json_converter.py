@@ -53,6 +53,9 @@ def convert_plot_to_json(
     if not rows:
         raise ValueError("Plot JSON has no scenes")
 
+    # Extract bgm_prompt if present (General/Ad Mode)
+    bgm_prompt = plot_data.get("bgm_prompt")
+
     # Build JSON structure
     from app.schemas.json_layout import (
         ShortsJSON, Timeline, Character, Scene, ImageSlot,
@@ -140,10 +143,12 @@ def convert_plot_to_json(
             # Determine char_id for voice selection
             if is_story_mode:
                 speaker = row.get("speaker", "narration")
-                # Convert speaker format to char_id (char_1 -> char_1)
-                voice_char_id = speaker if speaker != "narration" else "narrator"
+                # Keep speaker as-is (char_1, char_2, narration)
+                voice_char_id = speaker
             else:
-                voice_char_id = row["char_id"]
+                # General/Ad Mode: use "speaker" field
+                speaker = row.get("speaker", "narration")
+                voice_char_id = speaker
 
             texts.append(
                 TextLine(
@@ -284,51 +289,36 @@ def convert_plot_to_json(
             images.insert(0, bg_slot)  # Background goes first (z_index 0)
 
         else:
-            # General Mode: Single unified image per scene (all characters + background)
-            # Collect all characters in this scene
-            scene_char_ids = set()
-            for row in scene_rows:
-                scene_char_ids.add(row["char_id"])
+            # General Mode: Use image_prompt directly from plot.json
+            # The image_prompt is already provided in the scene data
+            image_prompt_raw = first_row.get("image_prompt", "")
 
-            # Build character descriptions
-            char_descriptions = []
-            for char_id in sorted(scene_char_ids):
-                for char in characters_data:
-                    if char["char_id"] == char_id:
-                        char_appearance = char.get("appearance", "")
-                        if char_appearance:
-                            # Get expression and pose from first row with this char_id
-                            char_row = next((r for r in scene_rows if r["char_id"] == char_id), None)
-                            if char_row:
-                                expression = char_row.get("expression", "neutral")
-                                pose = char_row.get("pose", "standing")
-                                char_desc = f"{char_appearance}, {expression} expression, {pose} pose"
-                                char_descriptions.append(char_desc)
-                        break
-
-            # Get background/setting
-            background_desc = first_row.get("background_img", "simple background")
-
-            # Build unified scene image prompt
-            if char_descriptions:
-                chars_text = ", ".join(char_descriptions)
-                image_prompt = f"{chars_text}, {background_desc}, 9:16 aspect ratio, full scene composition"
+            # If image_prompt is empty string "", reuse previous scene's image
+            # (handled by designer - we still create the slot but mark it for reuse)
+            if image_prompt_raw == "" and sequence > 1:
+                # Empty prompt means reuse previous image
+                logger.debug(f"Scene {scene_id}: Empty image_prompt, will reuse previous image")
+                image_prompt = ""  # Designer will handle reuse
             else:
-                image_prompt = f"{background_desc}, 9:16 aspect ratio"
+                # Use provided prompt or fallback
+                image_prompt = image_prompt_raw if image_prompt_raw else "simple background"
 
-            # Create single image slot for the entire scene
+            # Create single image slot for the scene (1:1 ratio, white background)
             images = [
                 ImageSlot(
                     slot_id="scene",
-                    type="scene",  # New type for unified scene images
+                    type="scene",  # Unified scene image type
                     ref_id=scene_id,
                     image_url="",  # Will be filled by designer
                     z_index=0
                 ).model_dump()
             ]
 
-            # Store image_prompt in metadata (for designer task)
+            # Store image_prompt for designer task
             images[0]["image_prompt"] = image_prompt
+            # Add metadata for general mode image generation
+            images[0]["aspect_ratio"] = "1:1"  # General mode uses 1:1 images
+            images[0]["background"] = "white"  # White background for transparency removal
 
         # SFX
         sfx_list = []
@@ -369,20 +359,31 @@ def convert_plot_to_json(
     )
 
     # Create final JSON
+    metadata_dict = {
+        "art_style": art_style,
+        "music_genre": music_genre,
+        "generated_from": str(plot_json_path),
+        "characters_file": str(characters_json_path) if characters_json_path.exists() else None
+    }
+
+    # Add bgm_prompt if present (General/Ad Mode)
+    if bgm_prompt:
+        metadata_dict["bgm_prompt"] = bgm_prompt
+        logger.info(f"Added bgm_prompt to metadata: {bgm_prompt}")
+
+    # Determine mode from schema detection
+    mode_value = "story" if is_story_mode else "general"
+    logger.info(f"Layout mode: {mode_value}")
+
     shorts_json = ShortsJSON(
         project_id=run_id,
         title=f"AutoShorts {run_id}",
-        mode="story",
+        mode=mode_value,
         timeline=timeline.model_dump(),
         characters=characters,
         scenes=scenes,
         global_bgm=None,
-        metadata={
-            "art_style": art_style,
-            "music_genre": music_genre,
-            "generated_from": str(plot_json_path),
-            "characters_file": str(characters_json_path) if characters_json_path.exists() else None
-        }
+        metadata=metadata_dict
     )
 
     # Write layout JSON

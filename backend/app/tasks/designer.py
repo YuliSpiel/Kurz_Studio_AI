@@ -93,9 +93,11 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
             # Use stub - create placeholder images
 
         image_results = []
-        cached_background = None  # Cache for background image reuse
+        cached_background = None  # Cache for background image reuse (Story Mode)
         cached_background_prompt = None  # Track the prompt of cached background
-        cached_characters = {}  # Cache for character images: {prompt: image_path}
+        cached_characters = {}  # Cache for character images: {prompt: image_path} (Story Mode)
+        cached_scene = None  # Cache for scene image reuse (General Mode)
+        cached_scene_prompt = None  # Track the prompt of cached scene
 
         # Generate images for each scene
         for scene in layout.get("scenes", []):
@@ -133,7 +135,33 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
                         })
                         continue  # Skip generation, use cached background
 
-                # Check if image_prompt is pre-computed (Story Mode)
+                # Check for scene reuse (General Mode)
+                if img_type == "scene" and "image_prompt" in img_slot:
+                    base_prompt = img_slot.get("image_prompt", "")
+
+                    # Reuse scene if:
+                    # 1. Empty string (explicit reuse request), OR
+                    # 2. Same prompt as previously cached scene
+                    if base_prompt == "" and cached_scene:
+                        logger.info(f"[{run_id}] Reusing previous scene image (empty prompt) for {scene_id}")
+                        img_slot["image_url"] = cached_scene
+                        image_results.append({
+                            "scene_id": scene_id,
+                            "slot_id": slot_id,
+                            "image_url": cached_scene
+                        })
+                        continue  # Skip generation, use cached scene
+                    elif base_prompt and base_prompt == cached_scene_prompt and cached_scene:
+                        logger.info(f"[{run_id}] Reusing previous scene image (same prompt) for {scene_id}: {base_prompt[:50]}...")
+                        img_slot["image_url"] = cached_scene
+                        image_results.append({
+                            "scene_id": scene_id,
+                            "slot_id": slot_id,
+                            "image_url": cached_scene
+                        })
+                        continue  # Skip generation, use cached scene
+
+                # Check if image_prompt is pre-computed
                 if "image_prompt" in img_slot and img_slot["image_prompt"]:
                     # Use pre-computed prompt from json_converter
                     art_style = spec.get('art_style', '파스텔 수채화')
@@ -143,8 +171,13 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
                         # Background image: use prompt directly with art style
                         prompt = f"{art_style}, {base_prompt}"
                         seed = scene.get("bg_seed", settings.BG_SEED_BASE)
+                    elif img_type == "scene":
+                        # General Mode: unified scene image (characters + background)
+                        prompt = f"{art_style}, {base_prompt}"
+                        seed = scene.get("bg_seed", settings.BG_SEED_BASE)
+                        logger.info(f"[{run_id}] General mode scene image: {prompt[:50]}...")
                     else:
-                        # Character image: prompt already includes appearance + expression + pose
+                        # Character image (Story Mode): prompt already includes appearance + expression + pose
                         prompt = f"{art_style}, {base_prompt}"
                         char_id = img_slot.get("ref_id")
                         char = next(
@@ -223,14 +256,18 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
                 # Generate image
                 logger.info(f"[{run_id}] Generating {scene_id}/{slot_id}: {prompt[:50]}...")
 
-                # Set dimensions based on image type for consistency
+                # Set dimensions based on image type and aspect ratio
                 if img_type == "character":
                     # Character: Generate larger image for cropping to standard size
                     # Generate at 1.5x size, then crop to 512x768 for consistency
                     gen_width, gen_height = 768, 1152
                     target_width, target_height = 512, 768
+                elif img_type == "scene" and img_slot.get("aspect_ratio") == "1:1":
+                    # General Mode: 1:1 square images for center placement
+                    gen_width, gen_height = 1080, 1080
+                    target_width, target_height = gen_width, gen_height
                 else:
-                    # Background or Scene: 9:16 ratio (full vertical screen)
+                    # Background or Scene (Story Mode): 9:16 ratio (full vertical screen)
                     gen_width, gen_height = 1080, 1920
                     target_width, target_height = gen_width, gen_height
 
@@ -349,6 +386,14 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
                     char_prompt = img_slot["image_prompt"]
                     cached_characters[char_prompt] = str(image_path)
                     logger.info(f"[{run_id}] Cached character image for reuse: {char_prompt[:50]}...")
+
+                # Cache scene image for reuse (General Mode)
+                if img_type == "scene":
+                    cached_scene = str(image_path)
+                    # Store the prompt used for this scene
+                    if "image_prompt" in img_slot:
+                        cached_scene_prompt = img_slot["image_prompt"]
+                    logger.info(f"[{run_id}] Cached scene image for reuse: {cached_scene}")
 
                 logger.info(f"[{run_id}] Generated: {image_path}")
 
