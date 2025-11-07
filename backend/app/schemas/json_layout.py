@@ -17,11 +17,15 @@ class Character(BaseModel):
 
 class ImageSlot(BaseModel):
     """Image slot positioning in scene."""
-    slot_id: Literal["left", "center", "right"]
-    type: Literal["character", "background", "prop"]
+    slot_id: str = Field(description="Slot identifier (e.g., 'left', 'center', 'right', 'char_1_slot', 'background', 'scene')")
+    type: Literal["character", "background", "prop", "scene"] = Field(
+        description="Image type: character (Story Mode), background (Story Mode), scene (General Mode), or prop"
+    )
     ref_id: Optional[str] = Field(None, description="char_id or asset ID")
     image_url: str = Field(description="생성된 이미지 경로")
     z_index: int = Field(default=0, description="레이어 순서")
+    position: Optional[str] = Field(None, description="Position label (left, center, right) for character slots")
+    x_pos: Optional[float] = Field(None, description="Normalized x position (0.0-1.0) for horizontal placement")
 
 
 class TextLine(BaseModel):
@@ -31,7 +35,7 @@ class TextLine(BaseModel):
     text: str
     text_type: Literal["dialogue", "narration"] = Field(description="대사 또는 해설 구분")
     emotion: str = Field(default="neutral", description="감정 (예: neutral, happy, sad)")
-    position: Literal["top", "center", "bottom"] = Field(default="bottom", description="자막 위치")
+    position: Literal["top"] = Field(default="top", description="자막 위치 (항상 상단)")
     audio_url: str = Field(default="", description="TTS 음성 파일 경로")
     start_ms: int
     duration_ms: int

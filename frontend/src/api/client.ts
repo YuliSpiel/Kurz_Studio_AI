@@ -4,13 +4,23 @@
 
 const API_BASE = '/api'
 
+interface CharacterInput {
+  name: string
+  gender: 'male' | 'female' | 'other'
+  role: string
+  personality: string
+  appearance: string
+  reference_image?: string
+}
+
 interface RunSpec {
   mode: 'story' | 'ad'
   prompt: string
-  num_characters: 1 | 2
+  num_characters: 1 | 2 | 3
   num_cuts: number
   art_style: string
   music_genre: string
+  characters?: CharacterInput[]
   reference_images?: string[]
   lora_strength?: number
   voice_id?: string

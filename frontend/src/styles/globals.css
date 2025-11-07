@@ -107,6 +107,90 @@ body {
   background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
 }
 
+/* Characters Section */
+.characters-section {
+  margin: 30px 0;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.section-header label {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #28a745;
+}
+
+.btn-add-character {
+  padding: 8px 16px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.btn-add-character:hover:not(:disabled) {
+  background: #218838;
+}
+
+.btn-add-character:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.character-card {
+  background: #f8f9fa;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.character-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.character-card-header h3 {
+  margin: 0;
+  color: #28a745;
+  font-size: 1.1rem;
+}
+
+.btn-remove-character {
+  padding: 6px 12px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.btn-remove-character:hover {
+  background: #c82333;
+}
+
+.file-name {
+  margin-top: 8px;
+  font-size: 0.9rem;
+  color: #28a745;
+  font-style: italic;
+}
+
 /* Ad Mode specific styles */
 .ad-mode-form h2 {
   color: #fd7e14;

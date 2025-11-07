@@ -13,9 +13,23 @@
       "Bash(python3:*)",
       "Bash(convert:*)",
       "Bash(kvenv/bin/python:*)",
-      "Bash(awk:*)"
+      "Bash(awk:*)",
+      "Bash(git log:*)",
+      "Bash(git stash:*)"
     ],
     "deny": [],
     "ask": []
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat CLAUDE.md 2>/dev/null || echo ''"
+          }
+        ]
+      }
+    ]
   }
 }

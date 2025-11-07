@@ -52,12 +52,95 @@ def voice_task(self, run_id: str, json_path: str, spec: dict):
 
         voice_results = []
 
+        # Load voices.json for smart voice matching
+        voices_config = None
+        voices_path = Path("voices.json")
+        if voices_path.exists():
+            with open(voices_path, "r", encoding="utf-8") as f:
+                voices_config = json.load(f)
+            logger.info(f"[{run_id}] Loaded voices.json for voice matching")
+
+        # Load characters.json for gender/personality info
+        characters_json_path = Path(json_path).parent / "characters.json"
+        characters_data = {}
+        if characters_json_path.exists():
+            with open(characters_json_path, "r", encoding="utf-8") as f:
+                characters_data = json.load(f)
+            logger.info(f"[{run_id}] Loaded characters.json for voice matching")
+
         # Map characters to voice profiles
         char_voices = {}
         for char in layout.get("characters", []):
             char_id = char["char_id"]
-            voice_profile = spec.get("voice_id") or char.get("voice_profile", "default")
+
+            # Use explicit voice_id from spec if provided
+            if spec.get("voice_id"):
+                voice_profile = spec.get("voice_id")
+            # Smart voice matching for Story Mode
+            elif voices_config and characters_data:
+                # Find character in characters.json
+                char_data = next(
+                    (c for c in characters_data.get("characters", []) if c["char_id"] == char_id),
+                    None
+                )
+                if char_data:
+                    gender = char_data.get("gender", "other")
+                    role = char_data.get("role", "")
+                    personality = char_data.get("personality", "")
+
+                    # Select voice based on gender and personality/role
+                    voice_list = voices_config.get("voices", {}).get(gender, [])
+                    if voice_list:
+                        # Smart matching: match personality keywords to voice descriptions
+                        best_voice = voice_list[0]  # Default to first
+
+                        # Keywords for voice matching
+                        personality_lower = personality.lower()
+                        role_lower = role.lower()
+
+                        for voice in voice_list:
+                            voice_desc = voice.get("description", "").lower()
+                            voice_roles = [r.lower() for r in voice.get("recommended_roles", [])]
+
+                            # Match based on personality keywords
+                            if any(keyword in personality_lower for keyword in ["밝", "활발", "친밀", "따뜻"]):
+                                if "밝" in voice_desc or "따뜻" in voice_desc or "친밀" in voice_desc:
+                                    best_voice = voice
+                                    break
+                            elif any(keyword in personality_lower for keyword in ["전문", "냉철", "이성", "쿨"]):
+                                if "쿨" in voice_desc or "세련" in voice_desc or "전문" in voice_desc:
+                                    best_voice = voice
+                                    break
+                            elif any(keyword in personality_lower for keyword in ["느린", "묵직", "차분"]):
+                                if "느린" in voice_desc or "묵직" in voice_desc:
+                                    best_voice = voice
+                                    break
+
+                            # Match based on role
+                            if role_lower and any(role_keyword in " ".join(voice_roles) for role_keyword in role_lower.split()):
+                                best_voice = voice
+                                break
+
+                        voice_profile = best_voice["voice_id"]
+                        logger.info(f"[{run_id}] Matched {char_id} ({gender}, {personality[:20]}...) to voice: {best_voice['name']}")
+                    else:
+                        voice_profile = char.get("voice_profile", "default")
+                else:
+                    voice_profile = char.get("voice_profile", "default")
+            else:
+                voice_profile = char.get("voice_profile", "default")
+
             char_voices[char_id] = voice_profile
+
+        # Add narrator voice if needed
+        if "narrator" not in char_voices and voices_config:
+            # Use a neutral narrator voice (default to first female voice)
+            female_voices = voices_config.get("voices", {}).get("female", [])
+            if female_voices:
+                char_voices["narrator"] = female_voices[0]["voice_id"]
+                logger.info(f"[{run_id}] Using narrator voice: {female_voices[0]['name']}")
+            else:
+                char_voices["narrator"] = "default"
 
         # Generate TTS for each text line
         for scene in layout.get("scenes", []):

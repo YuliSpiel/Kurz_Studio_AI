@@ -33,18 +33,13 @@ from app.utils.logger import setup_logger
 setup_logger()
 logger = logging.getLogger(__name__)
 
-# In-memory run tracking (production: use Redis/DB)
+# In-memory run tracking
 runs: Dict[str, dict] = {}
 websocket_clients: Dict[str, List[WebSocket]] = {}
 
-# Redis pub/sub for Celery -> WebSocket communication
-redis_client = None # 서버와 통신하는 객체
-pubsub = None # 구독/수신하는 객체
-'''
-[전역변수 선언 이유] 나중에 lifespan에서 종료 시점에 접근하기 위해서
-    listener_task.cancel()  # 이 함수 취소
-    await redis_client.close()  # ← 전역 변수여야 접근 가능
-'''
+# Redis clients for pub/sub
+redis_client = None  # Async Redis client for pub/sub
+pubsub = None  # Redis pub/sub object
 
 
 async def redis_listener(): # Redis에서 진행도 메시지를 받아서 WebSocket 클라이언트들에게 전달하는 중계자
@@ -178,6 +173,11 @@ async def create_run(spec: RunSpec):
     prompt_clean = "".join(c for c in spec.prompt if not c.isspace())[:8]
     run_id = f"{timestamp}_{prompt_clean}"
 
+    logger.info(f"[DEBUG] Received run request:")
+    logger.info(f"[DEBUG]   mode='{spec.mode}'")
+    logger.info(f"[DEBUG]   num_cuts={spec.num_cuts}")
+    logger.info(f"[DEBUG]   num_characters={spec.num_characters}")
+    logger.info(f"[DEBUG]   characters={'YES (' + str(len(spec.characters)) + ' chars)' if spec.characters else 'NO'}")
     logger.info(f"Creating run {run_id} with spec: {spec.mode}, {spec.num_cuts} cuts")
 
     # Initialize FSM

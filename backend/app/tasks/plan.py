@@ -51,7 +51,8 @@ def plan_task(self, run_id: str, spec: dict):
             prompt=spec["prompt"],
             num_characters=spec["num_characters"],
             num_cuts=spec["num_cuts"],
-            mode=spec["mode"]
+            mode=spec["mode"],
+            characters=spec.get("characters")  # Pass user-provided characters (Story Mode)
         )
         logger.info(f"[{run_id}] Characters generated: {characters_path}")
         logger.info(f"[{run_id}] Plot JSON generated: {plot_json_path}")

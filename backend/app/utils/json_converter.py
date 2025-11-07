@@ -103,6 +103,23 @@ def convert_plot_to_json(
     scenes = []
     total_duration = 0
 
+    # Detect schema type from first row
+    first_scene_row = rows[0] if rows else {}
+    is_story_mode = "char1_id" in first_scene_row and "speaker" in first_scene_row
+
+    # Cache for previous scene values (for Story Mode)
+    cache = {
+        "char1_id": None,
+        "char1_expression": "neutral",
+        "char1_pose": "standing",
+        "char1_pos": "center",
+        "char2_id": None,
+        "char2_expression": "neutral",
+        "char2_pose": "standing",
+        "char2_pos": "right",
+        "background_img": "simple background"
+    }
+
     for scene_id, scene_rows in sorted(scenes_data.items(), key=lambda x: int(x[0].split("_")[1])):
         first_row = scene_rows[0]
         sequence = int(scene_id.split("_")[1])
@@ -120,14 +137,22 @@ def convert_plot_to_json(
             # text_type이 dialogue일 경우에만 큰따옴표 추가
             display_text = f'"{text}"' if text_type == "dialogue" else text
 
+            # Determine char_id for voice selection
+            if is_story_mode:
+                speaker = row.get("speaker", "narration")
+                # Convert speaker format to char_id (char_1 -> char_1)
+                voice_char_id = speaker if speaker != "narration" else "narrator"
+            else:
+                voice_char_id = row["char_id"]
+
             texts.append(
                 TextLine(
                     line_id=line_id,
-                    char_id=row["char_id"],
+                    char_id=voice_char_id,
                     text=display_text,
                     text_type=text_type,
                     emotion=row.get("emotion", "neutral"),
-                    position=row.get("subtitle_position", "bottom"),
+                    position="top",  # Always top position
                     audio_url="",  # Will be filled by voice task
                     start_ms=idx * 2000,
                     duration_ms=duration_ms
@@ -135,38 +160,175 @@ def convert_plot_to_json(
             )
 
         # Create image slots
-        # Get character's appearance from characters_data if available
-        char_id = first_row["char_id"]
-        char_appearance = ""
-        if characters_data:
-            for char in characters_data:
-                if char["char_id"] == char_id:
-                    char_appearance = char.get("appearance", "")
-                    break
+        images = []
 
-        expression = first_row.get("expression", "neutral")
-        pose = first_row.get("pose", "standing")
+        if is_story_mode:
+            # Story Mode: Multiple characters with positioning
+            # Get values from plot, use cache if empty string ""
+            char1_id_raw = first_row.get("char1_id")
+            char1_id = char1_id_raw if char1_id_raw else cache["char1_id"]
 
-        # Build image prompt
-        if char_appearance and expression != "none" and pose != "none":
-            image_prompt = f"{char_appearance}, {expression} expression, {pose} pose"
-        elif char_appearance:
-            image_prompt = char_appearance
-        else:
-            image_prompt = ""
+            char1_expr_raw = first_row.get("char1_expression", "neutral")
+            char1_expr = char1_expr_raw if char1_expr_raw else cache["char1_expression"]
 
-        images = [
-            ImageSlot(
-                slot_id="center",
-                type="character",
-                ref_id=char_id,
-                image_url="",  # Will be filled by designer
-                z_index=1
+            char1_pose_raw = first_row.get("char1_pose", "standing")
+            char1_pose = char1_pose_raw if char1_pose_raw else cache["char1_pose"]
+
+            char1_pos_raw = first_row.get("char1_pos", "center")
+            char1_pos = char1_pos_raw if char1_pos_raw else cache["char1_pos"]
+
+            char2_id_raw = first_row.get("char2_id")
+            char2_id = char2_id_raw if char2_id_raw else cache["char2_id"]
+
+            char2_expr_raw = first_row.get("char2_expression", "neutral")
+            char2_expr = char2_expr_raw if char2_expr_raw else cache["char2_expression"]
+
+            char2_pose_raw = first_row.get("char2_pose", "standing")
+            char2_pose = char2_pose_raw if char2_pose_raw else cache["char2_pose"]
+
+            char2_pos_raw = first_row.get("char2_pos", "right")
+            char2_pos = char2_pos_raw if char2_pos_raw else cache["char2_pos"]
+
+            background_img_raw = first_row.get("background_img")  # Can be None, "", or actual value
+            # Use cache if null or empty string
+            if background_img_raw is None or background_img_raw == "":
+                background_img = cache["background_img"]
+            else:
+                background_img = background_img_raw
+
+            # Update cache with new values (only if not null and not empty)
+            if char1_id_raw is not None:
+                cache["char1_id"] = char1_id
+            if char1_expr_raw:
+                cache["char1_expression"] = char1_expr
+            if char1_pose_raw:
+                cache["char1_pose"] = char1_pose
+            if char1_pos_raw:
+                cache["char1_pos"] = char1_pos
+            if char2_id_raw is not None:
+                cache["char2_id"] = char2_id
+            if char2_expr_raw:
+                cache["char2_expression"] = char2_expr
+            if char2_pose_raw:
+                cache["char2_pose"] = char2_pose
+            if char2_pos_raw:
+                cache["char2_pos"] = char2_pos
+            if background_img_raw:  # Update cache only if not null and not empty
+                cache["background_img"] = background_img_raw
+
+            # Position mapping for x-coordinate (for multi-character scenes)
+            # Adjusted for better separation with 2:3 aspect ratio character images
+            position_map = {
+                "left": 0.2,      # 화면 왼쪽 20%
+                "center": 0.5,    # 정중앙 50%
+                "right": 0.8      # 화면 오른쪽 80%
+            }
+
+            # Add char1 if present (and not null)
+            if char1_id:
+                char1_appearance = ""
+                for char in characters_data:
+                    if char["char_id"] == char1_id:
+                        char1_appearance = char.get("appearance", "")
+                        break
+
+                # Character image (background will be removed by rembg)
+                # Fixed framing with strict composition rules
+                char1_prompt = f"{char1_appearance}, {char1_expr} expression, {char1_pose} pose, head to mid-thigh portrait, face at upper third of frame, body centered and fully visible, consistent scale, pure white background" if char1_appearance else ""
+
+                char1_slot = ImageSlot(
+                    slot_id=f"{char1_id}_slot",
+                    type="character",
+                    ref_id=char1_id,
+                    image_url="",
+                    z_index=2
+                ).model_dump()
+                char1_slot["image_prompt"] = char1_prompt
+                char1_slot["position"] = char1_pos
+                char1_slot["x_pos"] = position_map.get(char1_pos, 0.5)
+                images.append(char1_slot)
+
+            # Add char2 if present (and not null)
+            if char2_id:
+                char2_appearance = ""
+                for char in characters_data:
+                    if char["char_id"] == char2_id:
+                        char2_appearance = char.get("appearance", "")
+                        break
+
+                # Character image (background will be removed by rembg)
+                # Fixed framing with strict composition rules
+                char2_prompt = f"{char2_appearance}, {char2_expr} expression, {char2_pose} pose, head to mid-thigh portrait, face at upper third of frame, body centered and fully visible, consistent scale, pure white background" if char2_appearance else ""
+
+                char2_slot = ImageSlot(
+                    slot_id=f"{char2_id}_slot",
+                    type="character",
+                    ref_id=char2_id,
+                    image_url="",
+                    z_index=2
+                ).model_dump()
+                char2_slot["image_prompt"] = char2_prompt
+                char2_slot["position"] = char2_pos
+                char2_slot["x_pos"] = position_map.get(char2_pos, 0.75)
+                images.append(char2_slot)
+
+            # Add background image slot (always present)
+            bg_slot = ImageSlot(
+                slot_id="background",
+                type="background",
+                ref_id=scene_id,
+                image_url="",
+                z_index=0
             ).model_dump()
-        ]
+            bg_slot["image_prompt"] = background_img
+            images.insert(0, bg_slot)  # Background goes first (z_index 0)
 
-        # Store image_prompt in metadata (for designer task)
-        images[0]["image_prompt"] = image_prompt
+        else:
+            # General Mode: Single unified image per scene (all characters + background)
+            # Collect all characters in this scene
+            scene_char_ids = set()
+            for row in scene_rows:
+                scene_char_ids.add(row["char_id"])
+
+            # Build character descriptions
+            char_descriptions = []
+            for char_id in sorted(scene_char_ids):
+                for char in characters_data:
+                    if char["char_id"] == char_id:
+                        char_appearance = char.get("appearance", "")
+                        if char_appearance:
+                            # Get expression and pose from first row with this char_id
+                            char_row = next((r for r in scene_rows if r["char_id"] == char_id), None)
+                            if char_row:
+                                expression = char_row.get("expression", "neutral")
+                                pose = char_row.get("pose", "standing")
+                                char_desc = f"{char_appearance}, {expression} expression, {pose} pose"
+                                char_descriptions.append(char_desc)
+                        break
+
+            # Get background/setting
+            background_desc = first_row.get("background_img", "simple background")
+
+            # Build unified scene image prompt
+            if char_descriptions:
+                chars_text = ", ".join(char_descriptions)
+                image_prompt = f"{chars_text}, {background_desc}, 9:16 aspect ratio, full scene composition"
+            else:
+                image_prompt = f"{background_desc}, 9:16 aspect ratio"
+
+            # Create single image slot for the entire scene
+            images = [
+                ImageSlot(
+                    slot_id="scene",
+                    type="scene",  # New type for unified scene images
+                    ref_id=scene_id,
+                    image_url="",  # Will be filled by designer
+                    z_index=0
+                ).model_dump()
+            ]
+
+            # Store image_prompt in metadata (for designer task)
+            images[0]["image_prompt"] = image_prompt
 
         # SFX
         sfx_list = []

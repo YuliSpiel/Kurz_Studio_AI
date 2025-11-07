@@ -242,30 +242,92 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
 
             # Layer images
             image_clips = [base_clip]
-            for img_slot in scene.get("images", []):
+
+            # Sort slots by z_index (background first, then characters)
+            sorted_slots = sorted(scene.get("images", []), key=lambda s: s.get("z_index", 1))
+
+            for img_slot in sorted_slots:
                 img_url = img_slot.get("image_url")
                 if img_url and Path(img_url).exists():
-                    # Load and position image (MoviePy 2.x uses duration parameter)
-                    img_clip = ImageClip(img_url, duration=duration_sec)
+                    img_type = img_slot.get("type", "character")
 
-                    # Resize to fit
-                    img_clip = img_clip.resized(height=height * 0.6)
+                    # Load image with proper transparency handling for PNG
+                    from PIL import Image as PILImage
 
-                    # Position based on slot
-                    slot_id = img_slot.get("slot_id", "center")
-                    if slot_id == "left":
-                        img_clip = img_clip.with_position(("left", "center"))
-                    elif slot_id == "right":
-                        img_clip = img_clip.with_position(("right", "center"))
+                    pil_img = PILImage.open(img_url)
+
+                    # Check if image has alpha channel (transparency)
+                    has_alpha = pil_img.mode in ('RGBA', 'LA') or (pil_img.mode == 'P' and 'transparency' in pil_img.info)
+
+                    if has_alpha and img_type == "character":
+                        # Character with transparency - use mask for proper compositing
+                        logger.info(f"[{run_id}] Loading transparent PNG: {img_url}")
+
+                        # Convert to RGBA if needed
+                        if pil_img.mode != 'RGBA':
+                            pil_img = pil_img.convert('RGBA')
+
+                        # Split RGB and alpha
+                        img_array = np.array(pil_img)
+                        rgb = img_array[:, :, :3]
+                        alpha = img_array[:, :, 3]
+
+                        # Create ImageClip from RGB array
+                        img_clip = ImageClip(rgb, duration=duration_sec, is_mask=False)
+
+                        # Create mask from alpha channel
+                        # Normalize alpha to 0-1 range for MoviePy
+                        alpha_normalized = alpha.astype(float) / 255.0
+                        mask_clip = ImageClip(alpha_normalized, duration=duration_sec, is_mask=True)
+
+                        # Apply mask to image
+                        img_clip = img_clip.with_mask(mask_clip)
+                        logger.info(f"[{run_id}] Applied transparency mask to character image")
                     else:
+                        # Background or image without alpha - load normally
+                        img_clip = ImageClip(img_url, duration=duration_sec)
+
+                    # Handle different image types
+                    if img_type == "background" or img_type == "scene":
+                        # Background or Scene: fill entire screen
+                        img_clip = img_clip.resized((width, height))
                         img_clip = img_clip.with_position(("center", "center"))
+                        logger.info(f"[{run_id}] Added {img_type} image")
+                    else:
+                        # Character: resize and position based on x_pos
+                        img_clip = img_clip.resized(height=height * 0.6)
+
+                        # Check for x_pos (Story Mode positioning)
+                        if "x_pos" in img_slot:
+                            x_pos = img_slot["x_pos"]  # 0.25 (left), 0.5 (center), 0.75 (right)
+
+                            # Position image center at x_pos (not left edge)
+                            img_width, img_height = img_clip.size
+                            x_center = int(x_pos * width)
+                            y_center = int(height * 0.5)
+
+                            # Calculate top-left corner position so center is at (x_center, y_center)
+                            x_pixel = x_center - (img_width // 2)
+                            y_pixel = y_center - (img_height // 2)
+
+                            img_clip = img_clip.with_position((x_pixel, y_pixel), relative=False)
+                            logger.info(f"[{run_id}] Positioned character center at x={x_pos:.2f} ({x_center}px, image at {x_pixel}px)")
+                        else:
+                            # Legacy positioning by slot_id
+                            slot_id = img_slot.get("slot_id", "center")
+                            if slot_id == "left":
+                                img_clip = img_clip.with_position(("left", "center"))
+                            elif slot_id == "right":
+                                img_clip = img_clip.with_position(("right", "center"))
+                            else:
+                                img_clip = img_clip.with_position(("center", "center"))
 
                     image_clips.append(img_clip)
 
             # Composite video (without text yet)
             video_clip = CompositeVideoClip(image_clips, size=(width, height))
 
-            # Add text overlays (subtitles)
+            # Add text overlays (subtitles) - always at top with auto line wrapping
             text_clips = []
             for text_line in scene.get("texts", []):
                 text_content = text_line.get("text", "").strip('"')  # Remove quotes if present
@@ -273,7 +335,10 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
                     continue
 
                 try:
-                    # Create text clip
+                    # Create text clip with size constraint for auto line wrapping
+                    # Set max width to 90% of screen width for padding
+                    max_text_width = int(width * 0.9)
+
                     txt_clip = TextClip(
                         text=text_content,
                         font=KOREAN_FONT,
@@ -281,22 +346,17 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
                         color='white',
                         stroke_color='black',
                         stroke_width=2,
+                        size=(max_text_width, None),  # Auto line wrapping
+                        method='caption',  # Enable text wrapping
                         duration=duration_sec
                     )
 
-                    # Position text based on layout
-                    position = text_line.get("position", "bottom")
-                    if position == "top":
-                        txt_position = ('center', height * 0.1)
-                    elif position == "center":
-                        txt_position = ('center', 'center')
-                    else:  # bottom
-                        txt_position = ('center', height * 0.85)
-
+                    # Position text at top (10% from top, centered horizontally)
+                    txt_position = ('center', height * 0.1)
                     txt_clip = txt_clip.with_position(txt_position)
                     text_clips.append(txt_clip)
 
-                    logger.info(f"[{run_id}] Added subtitle: {text_content[:30]}...")
+                    logger.info(f"[{run_id}] Added subtitle at top: {text_content[:30]}...")
                 except Exception as e:
                     logger.warning(f"[{run_id}] Failed to create text overlay: {e}")
 
