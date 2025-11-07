@@ -28,6 +28,7 @@ from app.config import settings, get_settings
 from app.schemas.run_spec import RunSpec, RunStatus
 from app.orchestrator.fsm import FSM, RunState
 from app.utils.logger import setup_logger
+from app.utils.fonts import get_available_fonts
 
 # Setup logging
 setup_logger()
@@ -238,6 +239,41 @@ async def get_run(run_id: str):
         artifacts=run_data["artifacts"],
         logs=run_data["logs"],
     )
+
+
+@app.get("/api/fonts")
+async def get_fonts():
+    """Get list of available fonts for layout customization."""
+    try:
+        fonts = get_available_fonts()
+        return {"fonts": fonts}
+    except Exception as e:
+        logger.error(f"Failed to get fonts: {e}")
+        return {"fonts": []}
+
+
+@app.get("/api/fonts/{font_id}")
+async def get_font_file(font_id: str):
+    """Serve font file for web preview."""
+    from pathlib import Path
+    from fastapi.responses import FileResponse
+    from app.utils.fonts import FONTS_DIR
+
+    # Check for .ttf first, then .otf
+    for ext in [".ttf", ".otf"]:
+        font_path = FONTS_DIR / f"{font_id}{ext}"
+        if font_path.exists():
+            return FileResponse(
+                font_path,
+                media_type=f"font/{ext[1:]}",  # "font/ttf" or "font/otf"
+                headers={
+                    "Cache-Control": "public, max-age=86400",  # Cache for 1 day
+                    "Access-Control-Allow-Origin": "*"
+                }
+            )
+
+    # System fonts can't be served
+    raise HTTPException(status_code=404, detail=f"Font file not found: {font_id}")
 
 
 @app.post("/api/uploads")

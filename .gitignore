@@ -49,6 +49,11 @@ backend/app/data/*_test/
 !backend/app/data/.gitkeep
 !backend/app/data/samples/
 
+# Fonts (user-installed custom fonts)
+backend/app/assets/fonts/*.ttf
+backend/app/assets/fonts/*.otf
+!backend/app/assets/fonts/.gitkeep
+
 # OS / IDE
 .DS_Store
 .vscode/

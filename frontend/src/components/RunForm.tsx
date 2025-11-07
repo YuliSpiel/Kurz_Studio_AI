@@ -1,5 +1,5 @@
-import { useState, FormEvent } from 'react'
-import { createRun, uploadReferenceImage } from '../api/client'
+import { useState, useEffect, FormEvent } from 'react'
+import { createRun, uploadReferenceImage, getAvailableFonts, Font } from '../api/client'
 
 interface RunFormProps {
   onRunCreated: (runId: string) => void
@@ -18,10 +18,40 @@ export default function RunForm({ onRunCreated }: RunFormProps) {
   // Layout customization states
   const [videoTitle, setVideoTitle] = useState('')
   const [titleBgColor, setTitleBgColor] = useState('#323296') // Dark blue
-  const [titleFont, setTitleFont] = useState('NanumGothicBold')
-  const [titleFontSize, setTitleFontSize] = useState(120)
-  const [subtitleFont, setSubtitleFont] = useState('NanumGothic')
-  const [subtitleFontSize, setSubtitleFontSize] = useState(90)
+  const [titleFont, setTitleFont] = useState('AppleGothic')
+  const [titleFontSize, setTitleFontSize] = useState(100)
+  const [subtitleFont, setSubtitleFont] = useState('AppleGothic')
+  const [subtitleFontSize, setSubtitleFontSize] = useState(80)
+
+  // Font list
+  const [availableFonts, setAvailableFonts] = useState<Font[]>([])
+
+  // Load available fonts on component mount
+  useEffect(() => {
+    const loadFonts = async () => {
+      try {
+        const fonts = await getAvailableFonts()
+        setAvailableFonts(fonts)
+
+        // Dynamically load custom fonts for preview
+        fonts.forEach(font => {
+          // Skip system fonts (they don't have file paths in /api/fonts/)
+          if (font.id.startsWith('Apple')) return
+
+          const fontFace = new FontFace(font.id, `url(/api/fonts/${font.id})`)
+          fontFace.load().then(loadedFont => {
+            document.fonts.add(loadedFont)
+            console.log(`Loaded font: ${font.id}`)
+          }).catch(err => {
+            console.warn(`Failed to load font ${font.id}:`, err)
+          })
+        })
+      } catch (error) {
+        console.error('Failed to load fonts:', error)
+      }
+    }
+    loadFonts()
+  }, [])
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -165,61 +195,76 @@ export default function RunForm({ onRunCreated }: RunFormProps) {
                 className="preview-title-block"
                 style={{
                   backgroundColor: titleBgColor,
-                  height: '12.5%',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  padding: '10px 10px',
+                  boxSizing: 'border-box',
+                  minHeight: '40px'
                 }}
               >
                 <span style={{
                   color: 'white',
-                  fontSize: `${titleFontSize / 8}px`,
+                  fontSize: `${titleFontSize / 3.86}px`,
+                  fontFamily: titleFont,
                   fontWeight: 'bold',
                   whiteSpace: 'pre-wrap',
-                  textAlign: 'center'
+                  textAlign: 'center',
+                  lineHeight: '1.2'
                 }}>
                   {videoTitle || '샘플 타이틀'}
                 </span>
               </div>
               <div className="preview-content" style={{
-                height: '87.5%',
+                flex: 1,
                 position: 'relative',
                 overflow: 'hidden',
                 backgroundColor: '#ffffff',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'flex-start'
               }}>
-                {/* Background Image - 1:1 centered */}
-                <img
-                  src="/outputs/20251107_1617_고구마를좋아하는/scene_1_scene.png"
-                  alt="Preview"
-                  style={{
-                    maxWidth: '100%',
-                    maxHeight: '100%',
-                    objectFit: 'contain',
-                    position: 'relative',
-                    zIndex: 1
-                  }}
-                />
-                {/* Subtitle overlay */}
+                {/* Subtitle area - between title and image */}
                 <div style={{
-                  position: 'absolute',
-                  top: '10%',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  width: '90%',
-                  textAlign: 'center',
-                  zIndex: 2
+                  width: '100%',
+                  padding: '10px 0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#ffffff'
                 }}>
                   <span style={{
-                    fontSize: `${subtitleFontSize / 6}px`,
-                    color: 'white',
-                    textShadow: '1px 1px 2px black',
-                    fontWeight: 'bold'
+                    fontSize: `${subtitleFontSize / 3.86}px`,
+                    fontFamily: subtitleFont,
+                    color: 'black',
+                    fontWeight: 'bold',
+                    textAlign: 'center',
+                    width: '90%'
                   }}>
                     "고구마가 세상에서 제일 맛있어!"
                   </span>
+                </div>
+                {/* Background Image - 1:1, positioned at 60% from top (matching render) */}
+                <div style={{
+                  flex: 1,
+                  width: '100%',
+                  position: 'relative',
+                  display: 'flex'
+                }}>
+                  <img
+                    src="/outputs/20251107_1617_고구마를좋아하는/scene_1_scene.png"
+                    alt="Preview"
+                    style={{
+                      position: 'absolute',
+                      top: '60%',
+                      left: '50%',
+                      transform: 'translate(-50%, -60%)',
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      objectFit: 'contain'
+                    }}
+                  />
                 </div>
               </div>
             </div>
@@ -258,22 +303,40 @@ export default function RunForm({ onRunCreated }: RunFormProps) {
             </div>
 
             <div className="form-group">
+              <label>타이틀 폰트</label>
+              <select value={titleFont} onChange={(e) => setTitleFont(e.target.value)}>
+                {availableFonts.map(font => (
+                  <option key={font.id} value={font.id}>{font.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
               <label>타이틀 폰트 크기: {titleFontSize}px</label>
               <input
                 type="range"
-                min="100"
-                max="150"
+                min="80"
+                max="130"
                 value={titleFontSize}
                 onChange={(e) => setTitleFontSize(Number(e.target.value))}
               />
             </div>
 
             <div className="form-group">
+              <label>자막 폰트</label>
+              <select value={subtitleFont} onChange={(e) => setSubtitleFont(e.target.value)}>
+                {availableFonts.map(font => (
+                  <option key={font.id} value={font.id}>{font.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
               <label>자막 폰트 크기: {subtitleFontSize}px</label>
               <input
                 type="range"
-                min="70"
-                max="120"
+                min="60"
+                max="110"
                 value={subtitleFontSize}
                 onChange={(e) => setSubtitleFontSize(Number(e.target.value))}
               />

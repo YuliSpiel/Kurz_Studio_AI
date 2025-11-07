@@ -76,3 +76,20 @@ export async function uploadReferenceImage(file: File): Promise<string> {
   const data = await response.json()
   return data.filename
 }
+
+export interface Font {
+  id: string
+  name: string
+  path: string
+}
+
+export async function getAvailableFonts(): Promise<Font[]> {
+  const response = await fetch(`${API_BASE}/fonts`)
+
+  if (!response.ok) {
+    throw new Error(`Failed to get fonts: ${response.statusText}`)
+  }
+
+  const data = await response.json()
+  return data.fonts || []
+}

@@ -66,6 +66,7 @@ def plan_task(self, run_id: str, spec: dict):
             run_id=run_id,
             art_style=spec.get("art_style", "파스텔 수채화"),
             music_genre=spec.get("music_genre", "ambient"),
+            video_title=spec.get("video_title"),
             layout_config=spec.get("layout_config")
         )
         logger.info(f"[{run_id}] Layout JSON generated: {json_path}")
