@@ -361,12 +361,20 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
                     # Set max width to 90% of screen width for padding
                     max_text_width = int(width * 0.9)
 
+                    # Use black text for general mode (white background), white text for story mode
+                    if mode == "general":
+                        text_color = 'black'
+                        stroke_color = 'white'
+                    else:
+                        text_color = 'white'
+                        stroke_color = 'black'
+
                     txt_clip = TextClip(
                         text=text_content,
                         font=KOREAN_FONT,
                         font_size=60,
-                        color='white',
-                        stroke_color='black',
+                        color=text_color,
+                        stroke_color=stroke_color,
                         stroke_width=2,
                         size=(max_text_width, None),  # Auto line wrapping
                         method='caption',  # Enable text wrapping

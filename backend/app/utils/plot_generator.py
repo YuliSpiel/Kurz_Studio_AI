@@ -59,7 +59,7 @@ def generate_plot_with_characters(
                         "char_id": f"char_{i+1}",
                         "name": char["name"],
                         "appearance": char["appearance"],
-                        "personality": char["personality"],
+                        "personality": char.get("personality", "기본 성격"),
                         "voice_profile": "default",  # Will be matched by voice.py
                         "seed": 1002 + i,
                         "gender": char.get("gender", "other"),
@@ -154,7 +154,7 @@ JSON 형식:
 
         # Step 2: Generate plot JSON
         char_names = ", ".join([c["name"] for c in characters_data["characters"]])
-        char_list = "\n".join([f"- {c['char_id']}: {c['name']} ({c.get('role', c['personality'])})"
+        char_list = "\n".join([f"- {c['char_id']}: {c['name']} ({c.get('role', c.get('personality', '캐릭터'))})"
                                for c in characters_data["characters"]])
 
         # Add detailed character information when user provides characters
@@ -164,7 +164,7 @@ JSON 형식:
             for c in characters_data["characters"]:
                 char_details += f"- {c['name']} ({c['char_id']})\n"
                 char_details += f"  외형: {c['appearance']}\n"
-                char_details += f"  성격: {c['personality']}\n"
+                char_details += f"  성격: {c.get('personality', '기본 성격')}\n"
                 if c.get('role'):
                     char_details += f"  역할: {c['role']}\n"
                 char_details += "\n"
@@ -314,10 +314,12 @@ JSON 예시:
 
 3. **기타**:
    - 반드시 JSON 형식으로만 출력
-   - 마지막에 bgm_prompt도 포함 (음악 스타일, 장르, 분위기 등)
+   - title: 영상 제목 (간결하고 임팩트 있게, 10자 이내)
+   - bgm_prompt도 포함 (음악 스타일, 장르, 분위기 등)
 
 JSON 형식:
 {{
+  "title": "용감한 고양이의 모험",
   "bgm_prompt": "upbeat, cheerful, acoustic guitar, warm atmosphere",
   "scenes": [
     {{

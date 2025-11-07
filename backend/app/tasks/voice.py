@@ -159,16 +159,49 @@ def voice_task(self, run_id: str, json_path: str, spec: dict):
                     output_filename=str(audio_dir / f"{scene_id}_{line_id}.mp3")
                 )
 
+                # Measure audio duration
+                try:
+                    from moviepy.editor import AudioFileClip
+                    with AudioFileClip(str(audio_path)) as audio_clip:
+                        audio_duration_ms = int(audio_clip.duration * 1000)
+                    logger.info(f"[{run_id}] Audio duration: {audio_duration_ms}ms for {scene_id}/{line_id}")
+                except Exception as e:
+                    logger.warning(f"[{run_id}] Failed to measure audio duration: {e}, using default")
+                    audio_duration_ms = None
+
                 # Update JSON
                 text_line["audio_url"] = str(audio_path)
 
                 voice_results.append({
                     "scene_id": scene_id,
                     "line_id": line_id,
-                    "audio_url": str(audio_path)
+                    "audio_url": str(audio_path),
+                    "audio_duration_ms": audio_duration_ms
                 })
 
                 logger.info(f"[{run_id}] Generated: {audio_path}")
+
+        # Update scene durations based on TTS lengths
+        for scene in layout.get("scenes", []):
+            scene_id = scene["scene_id"]
+
+            # Find all audio durations for this scene
+            scene_audio_durations = [
+                result["audio_duration_ms"]
+                for result in voice_results
+                if result["scene_id"] == scene_id and result["audio_duration_ms"] is not None
+            ]
+
+            if scene_audio_durations:
+                # Use the longest audio duration for the scene, plus 500ms padding
+                max_audio_duration = max(scene_audio_durations)
+                new_duration = max_audio_duration + 500  # Add 500ms padding
+                old_duration = scene.get("duration_ms", 5000)
+
+                scene["duration_ms"] = new_duration
+                logger.info(f"[{run_id}] Updated {scene_id} duration: {old_duration}ms → {new_duration}ms (based on TTS: {max_audio_duration}ms)")
+            else:
+                logger.warning(f"[{run_id}] No audio duration found for {scene_id}, keeping original duration")
 
         # Save updated JSON
         with open(json_path, "w", encoding="utf-8") as f:
