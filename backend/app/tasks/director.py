@@ -233,12 +233,18 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
 
             logger.info(f"[{run_id}] Composing {scene_id}, duration={duration_sec}s")
 
-            # Create base background
-            bg_color = (20, 20, 40)  # Dark background
+            # Create base background - white for general mode, dark for story mode
+            mode = layout.get("mode", "story")
+            if mode == "general":
+                bg_color = (255, 255, 255)  # White background for general mode
+            else:
+                bg_color = (20, 20, 40)  # Dark background for story mode
+
             base_clip = VideoClip(
                 lambda t: np.full((height, width, 3), bg_color, dtype=np.uint8),
                 duration=duration_sec
             )
+            logger.info(f"[{run_id}] Using {'white' if mode == 'general' else 'dark'} base background for {mode} mode")
 
             # Layer images
             image_clips = [base_clip]
@@ -288,11 +294,27 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
                         img_clip = ImageClip(img_url, duration=duration_sec)
 
                     # Handle different image types
-                    if img_type == "background" or img_type == "scene":
-                        # Background or Scene: fill entire screen
+                    if img_type == "background":
+                        # Background: always fill entire screen (9:16)
                         img_clip = img_clip.resized((width, height))
                         img_clip = img_clip.with_position(("center", "center"))
-                        logger.info(f"[{run_id}] Added {img_type} image")
+                        logger.info(f"[{run_id}] Added background image (full screen)")
+                    elif img_type == "scene":
+                        # Scene image: check aspect ratio
+                        aspect_ratio = img_slot.get("aspect_ratio", "9:16")
+
+                        if aspect_ratio == "1:1":
+                            # General Mode: 1:1 square image, center placement
+                            # Resize to fit width while maintaining aspect ratio
+                            img_clip = img_clip.resized(width=width)
+                            # Center vertically
+                            img_clip = img_clip.with_position(("center", "center"))
+                            logger.info(f"[{run_id}] Added 1:1 scene image (center placement)")
+                        else:
+                            # Story Mode or default: 9:16 image, fill screen
+                            img_clip = img_clip.resized((width, height))
+                            img_clip = img_clip.with_position(("center", "center"))
+                            logger.info(f"[{run_id}] Added 9:16 scene image (full screen)")
                     else:
                         # Character: resize and position based on x_pos
                         img_clip = img_clip.resized(height=height * 0.6)

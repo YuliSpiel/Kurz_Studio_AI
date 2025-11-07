@@ -73,21 +73,41 @@ def generate_plot_with_characters(
             logger.info(f"✅ Characters saved: {characters_path}")
         else:
             # Auto-generate characters
+            # Load voices.json for voice selection
+            voices_path = Path("voices.json")
+            voices_data = {}
+            if voices_path.exists():
+                with open(voices_path, "r", encoding="utf-8") as f:
+                    voices_data = json.load(f)
+
+            # Build voice options description
+            female_voices = voices_data.get("voices", {}).get("female", [])
+            male_voices = voices_data.get("voices", {}).get("male", [])
+
+            voice_options = "사용 가능한 목소리:\n"
+            voice_options += "여성:\n"
+            for v in female_voices:
+                voice_options += f"  - {v['voice_id']}: {v['name']} - {v['description']}\n"
+            voice_options += "남성:\n"
+            for v in male_voices:
+                voice_options += f"  - {v['voice_id']}: {v['name']} - {v['description']}\n"
+
             char_prompt = f"""당신은 숏폼 영상 콘텐츠의 캐릭터 디자이너입니다.
 사용자의 요청에 맞는 {num_characters}명의 캐릭터를 만들어주세요.
+
+{voice_options}
 
 각 캐릭터마다 다음 정보를 JSON 형식으로 제공하세요:
 - char_id: char_1, char_2, ... 형식
 - name: 캐릭터 이름 (창의적으로)
 - appearance: 외형 묘사 (이미지 생성 프롬프트용, 상세하게)
-- personality: 성격/특징
-- voice_profile: "default"
-- seed: char_1은 1002, char_2는 1003, ...
+- voice_id: 위 목소리 중 캐릭터에 어울리는 voice_id 선택
 
 **중요**:
 - 반드시 JSON 형식으로만 출력
 - appearance는 이미지 생성 프롬프트로 사용되므로 시각적 특징 상세 작성
-- 해설자는 appearance를 "음성만 있는 해설자 (이미지 없음)"으로 설정
+- 해설자가 필요하면 char_id를 "narration"으로, appearance는 null로 설정
+- voice_id는 반드시 위 목록에서 선택
 
 JSON 형식:
 {{
@@ -96,9 +116,13 @@ JSON 형식:
       "char_id": "char_1",
       "name": "캐릭터 이름",
       "appearance": "상세한 외형 묘사",
-      "personality": "성격 설명",
-      "voice_profile": "default",
-      "seed": 1002
+      "voice_id": "xi3rF0t7dg7uN2M0WUhr"
+    }},
+    {{
+      "char_id": "narration",
+      "name": "해설",
+      "appearance": null,
+      "voice_id": "uyVNoMrnUku1dZyVEXwD"
     }}
   ]
 }}"""
@@ -259,52 +283,56 @@ JSON 예시:
   ]
 }}"""
         else:
-            # Legacy schema for normal/ad modes
-            logger.info(f"[DEBUG] ⚠️ Using LEGACY MODE prompt (char_id/expression/pose schema) for mode='{mode}'")
+            # General/Ad Mode: Simplified schema with unified image prompts
+            logger.info(f"[DEBUG] ✅ Using GENERAL MODE prompt (image_prompt + speaker schema) for mode='{mode}'")
             plot_prompt = f"""당신은 숏폼 영상 콘텐츠 시나리오 작가입니다.
 사용자의 요청을 {num_cuts}개 장면으로 나누어 {'광고' if mode == 'ad' else '영상'}를 만들어주세요.
 
-등장인물: {char_names}
+등장인물:
+{char_list}
 
 각 장면마다 다음 정보를 JSON 형식으로 제공하세요:
 - scene_id: scene_1, scene_2, ... 형식
-- char_id: char_1, char_2 (등장인물 ID)
-- expression: 표정 (excited, happy, sad, angry, surprised, neutral, amazed, confident, brave 등)
-- pose: 포즈 (standing, sitting, walking, running, pointing, looking_up, fist_raised 등, 해설자는 none)
+- image_prompt: 이미지 생성 프롬프트 (캐릭터 외형 + 동작/표정 + 배경을 자연스럽게 묘사)
+  - 이전 장면과 동일한 이미지를 재사용하려면 빈 문자열 ""로 설정
+  - 해설만 있는 장면도 image_prompt 필요 (배경 묘사)
 - text: 대사 또는 해설 내용
-- text_type: dialogue (대사) 또는 narration (해설)
-- emotion: neutral, happy, sad, excited, angry, surprised 중 하나
-- subtitle_position: 항상 "top" (자막은 항상 상단에 표시)
+  - 대사일 경우 반드시 큰따옴표로 감싸기 (예: "안녕!")
+  - 해설일 경우 큰따옴표 없이 작성
+- speaker: char_1, char_2, narration 중 하나
 - duration_ms: 장면 지속시간 (4000-6000)
 
-**중요**:
-- 반드시 JSON 형식으로만 출력
-- 해설자의 expression/pose는 "none"으로 설정
+**중요 규칙**:
+1. **이미지 프롬프트**:
+   - 자연스럽고 상세하게 작성 (캐릭터 + 동작 + 배경)
+   - 같은 이미지를 재사용하려면 image_prompt를 ""로 설정
+   - 이미지는 1:1 비율로 생성되며 화면 중앙에 배치됨
+
+2. **텍스트 형식**:
+   - speaker가 narration이 아닌 경우 text에 큰따옴표 추가
+   - speaker가 narration인 경우 큰따옴표 없이 작성
+
+3. **기타**:
+   - 반드시 JSON 형식으로만 출력
+   - 마지막에 bgm_prompt도 포함 (음악 스타일, 장르, 분위기 등)
 
 JSON 형식:
 {{
+  "bgm_prompt": "upbeat, cheerful, acoustic guitar, warm atmosphere",
   "scenes": [
     {{
       "scene_id": "scene_1",
-      "char_id": "char_1",
-      "expression": "excited",
-      "pose": "standing",
-      "text": "안녕! 나는 용감한 고양이야!",
-      "text_type": "dialogue",
-      "emotion": "happy",
-      "subtitle_position": "top",
+      "image_prompt": "귀여운 고양이가 신나게 웃으며 손을 흔들고 있는 모습, 밝은 아침 햇살이 비치는 작은 마을 배경",
+      "text": "\\"안녕! 나는 용감한 고양이야!\\"",
+      "speaker": "char_1",
       "duration_ms": 5000
     }},
     {{
       "scene_id": "scene_2",
-      "char_id": "char_2",
-      "expression": "happy",
-      "pose": "walking",
-      "text": "우주로 출발하자!",
-      "text_type": "dialogue",
-      "emotion": "excited",
-      "subtitle_position": "top",
-      "duration_ms": 4500
+      "image_prompt": "",
+      "text": "그는 새로운 모험을 시작했다.",
+      "speaker": "narration",
+      "duration_ms": 4000
     }}
   ]
 }}"""
@@ -357,7 +385,11 @@ def _generate_fallback(
     characters_path = output_dir / "characters.json"
     plot_path = output_dir / "plot.json"
 
-    # Generate simple characters
+    # Generate simple characters with default voices
+    default_female_voice = "xi3rF0t7dg7uN2M0WUhr"  # Yuna
+    default_male_voice = "3MTvEr8xCMCC2mL9ujrI"  # June
+    narration_voice = "uyVNoMrnUku1dZyVEXwD"  # Anna Kim
+
     if characters:
         # Use provided characters
         characters_data = {
@@ -366,11 +398,7 @@ def _generate_fallback(
                     "char_id": f"char_{i+1}",
                     "name": char["name"],
                     "appearance": char["appearance"],
-                    "personality": char["personality"],
-                    "voice_profile": "default",
-                    "seed": 1002 + i,
-                    "gender": char.get("gender", "other"),
-                    "role": char.get("role", "")
+                    "voice_id": default_female_voice if char.get("gender") == "female" else default_male_voice
                 }
                 for i, char in enumerate(characters)
             ]
@@ -383,12 +411,15 @@ def _generate_fallback(
                     "char_id": f"char_{i+1}",
                     "name": f"캐릭터 {i+1}",
                     "appearance": f"캐릭터 {i+1}의 외형",
-                    "personality": f"캐릭터 {i+1}의 성격",
-                    "voice_profile": "default",
-                    "seed": 1002 + i
+                    "voice_id": default_female_voice
                 }
                 for i in range(num_characters)
-            ]
+            ] + [{
+                "char_id": "narration",
+                "name": "해설",
+                "appearance": None,
+                "voice_id": narration_voice
+            }]
         }
 
     with open(characters_path, "w", encoding="utf-8") as f:
@@ -401,7 +432,7 @@ def _generate_fallback(
         char_id = f"char_{(i % num_characters) + 1}"
 
         if mode == "story":
-            # Story Mode: Use new schema
+            # Story Mode: Use char1_id/char2_id schema
             logger.debug(f"[DEBUG] Fallback: generating story mode scene {i+1}")
             scenes.append({
                 "scene_id": scene_id,
@@ -422,20 +453,35 @@ def _generate_fallback(
                 "background_img": "simple background"
             })
         else:
-            # Legacy schema for normal/ad modes
-            scenes.append({
-                "scene_id": scene_id,
-                "char_id": char_id,
-                "expression": "neutral",
-                "pose": "standing",
-                "text": f"{prompt}의 {i+1}번째 장면입니다.",
-                "text_type": "dialogue",
-                "emotion": "neutral" if i % 2 == 0 else "happy",
-                "subtitle_position": "top",
-                "duration_ms": 5000
-            })
+            # General/Ad Mode: Use image_prompt + speaker schema
+            is_narration = (i % 3 == 2)  # Every 3rd scene is narration
+            logger.debug(f"[DEBUG] Fallback: generating general mode scene {i+1}")
 
-    plot_data = {"scenes": scenes}
+            if is_narration:
+                scenes.append({
+                    "scene_id": scene_id,
+                    "image_prompt": f"{prompt} 관련 배경 이미지",
+                    "text": f"이것은 {prompt}에 대한 이야기입니다.",
+                    "speaker": "narration",
+                    "duration_ms": 5000
+                })
+            else:
+                scenes.append({
+                    "scene_id": scene_id,
+                    "image_prompt": f"캐릭터가 등장하는 장면, {prompt} 배경",
+                    "text": f'"{prompt}의 {i+1}번째 장면입니다."',
+                    "speaker": char_id,
+                    "duration_ms": 5000
+                })
+
+    if mode == "story":
+        plot_data = {"scenes": scenes}
+    else:
+        plot_data = {
+            "bgm_prompt": "calm, atmospheric background music",
+            "scenes": scenes
+        }
+
     with open(plot_path, "w", encoding="utf-8") as f:
         json.dump(plot_data, f, indent=2, ensure_ascii=False)
 

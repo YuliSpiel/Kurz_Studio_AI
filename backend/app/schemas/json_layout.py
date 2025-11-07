@@ -26,6 +26,9 @@ class ImageSlot(BaseModel):
     z_index: int = Field(default=0, description="레이어 순서")
     position: Optional[str] = Field(None, description="Position label (left, center, right) for character slots")
     x_pos: Optional[float] = Field(None, description="Normalized x position (0.0-1.0) for horizontal placement")
+    image_prompt: Optional[str] = Field(None, description="Image generation prompt (for designer task)")
+    aspect_ratio: Optional[str] = Field(None, description="Aspect ratio (1:1 for general mode, 2:3 for characters, 9:16 for backgrounds)")
+    background: Optional[str] = Field(None, description="Background color for image generation (white for general mode)")
 
 
 class TextLine(BaseModel):
@@ -111,7 +114,7 @@ class ShortsJSON(BaseModel):
 
     project_id: str
     title: str
-    mode: Literal["story", "ad"]
+    mode: Literal["general", "story", "ad"]
 
     timeline: Timeline
     characters: List[Character]

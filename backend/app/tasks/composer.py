@@ -58,20 +58,41 @@ def composer_task(self, run_id: str, json_path: str, spec: dict):
 
         # Generate global BGM if needed
         total_duration_ms = layout.get("timeline", {}).get("total_duration_ms", 30000)
-        music_genre = spec.get("music_genre", "ambient")
 
-        logger.info(f"[{run_id}] Generating global BGM: {music_genre}, {total_duration_ms}ms")
+        # Check for bgm_prompt in metadata (General/Ad Mode)
+        metadata = layout.get("metadata", {})
+        bgm_prompt = metadata.get("bgm_prompt")
+
+        if bgm_prompt:
+            # Use detailed BGM prompt from plot generation (General/Ad Mode)
+            music_genre = bgm_prompt  # Pass full prompt as genre
+            mood = None  # Don't override with generic mood
+            logger.info(f"[{run_id}] Generating BGM from prompt: {bgm_prompt}")
+        else:
+            # Fallback to generic genre+mood (Story Mode or fallback)
+            music_genre = spec.get("music_genre", "ambient")
+            mood = "cinematic"
+            logger.info(f"[{run_id}] Generating BGM: {music_genre}, {mood}, {total_duration_ms}ms")
 
         # Generate music in run_id folder
         audio_dir = Path(f"app/data/outputs/{run_id}/audio")
         audio_dir.mkdir(parents=True, exist_ok=True)
 
-        bgm_path = client.generate_music(
-            genre=music_genre,
-            mood="cinematic",
-            duration_ms=total_duration_ms,
-            output_filename=str(audio_dir / "global_bgm.mp3")
-        )
+        if mood:
+            bgm_path = client.generate_music(
+                genre=music_genre,
+                mood=mood,
+                duration_ms=total_duration_ms,
+                output_filename=str(audio_dir / "global_bgm.mp3")
+            )
+        else:
+            # Use prompt-based generation (pass as genre)
+            bgm_path = client.generate_music(
+                genre=music_genre,
+                mood="",  # Empty mood to let prompt take precedence
+                duration_ms=total_duration_ms,
+                output_filename=str(audio_dir / "global_bgm.mp3")
+            )
 
         # Update JSON
         if "global_bgm" not in layout or layout["global_bgm"] is None:
