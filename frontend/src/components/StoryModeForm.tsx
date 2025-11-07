@@ -30,10 +30,10 @@ export default function StoryModeForm({ onRunCreated }: StoryModeFormProps) {
   const [numCuts, setNumCuts] = useState<number>(5)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Test mode: Ctrl+T (or Cmd+T) to fill with sample data
+  // Test mode: Alt+Shift+T to fill with sample data
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 't') {
+      if (e.altKey && e.shiftKey && e.key === 'T') {
         e.preventDefault()
 
         // Fill with sample story data
