@@ -22,6 +22,8 @@ class ImageSlot(BaseModel):
     ref_id: Optional[str] = Field(None, description="char_id or asset ID")
     image_url: str = Field(description="생성된 이미지 경로")
     z_index: int = Field(default=0, description="레이어 순서")
+    position: Optional[str] = Field(None, description="Position label (left, center, right) for character slots")
+    x_pos: Optional[float] = Field(None, description="Normalized x position (0.0-1.0) for horizontal placement")
 
 
 class TextLine(BaseModel):
