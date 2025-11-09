@@ -247,6 +247,13 @@ body {
   background: linear-gradient(135deg, #fd7e14 0%, #e63946 100%);
 }
 
+.field-hint {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: #777;
+  font-style: italic;
+}
+
 .form-group {
   margin-bottom: 20px;
 }
