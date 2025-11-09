@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 class ProductScraper:
     """Scrapes product information from e-commerce websites."""
 
-    def __init__(self, timeout: int = 10):
+    def __init__(self, timeout: int = 30):
         self.timeout = timeout
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
 
     def scrape(self, url: str) -> Dict:

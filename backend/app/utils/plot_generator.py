@@ -86,8 +86,24 @@ def generate_plot_with_characters(
 
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
-        # Step 1: Generate or use provided characters
-        if characters:
+        # Step 1: Generate or use provided characters (skip for ad mode)
+        if mode == "ad":
+            # Ad Mode: No characters needed, only narration
+            logger.info("Step 1: Ad mode - creating narration-only character...")
+            characters_data = {
+                "characters": [
+                    {
+                        "char_id": "narration",
+                        "name": "광고 해설",
+                        "appearance": None,
+                        "voice_id": "uyVNoMrnUku1dZyVEXwD"  # Anna Kim (narration voice)
+                    }
+                ]
+            }
+            with open(characters_path, "w", encoding="utf-8") as f:
+                json.dump(characters_data, f, indent=2, ensure_ascii=False)
+            logger.info(f"✅ Narration-only character saved for ad mode: {characters_path}")
+        elif characters:
             # Story Mode: Use user-provided characters
             logger.info("Step 1: Using provided characters (Story Mode)...")
             characters_data = {
@@ -109,7 +125,7 @@ def generate_plot_with_characters(
                 json.dump(characters_data, f, indent=2, ensure_ascii=False)
             logger.info(f"✅ Characters saved: {characters_path}")
         else:
-            # Auto-generate characters
+            # General/Story Mode: Auto-generate characters
             # Load voices.json for voice selection
             voices_path = Path("voices.json")
             voices_data = {}
@@ -319,11 +335,65 @@ JSON 예시:
     }}
   ]
 }}"""
+        elif mode == "ad":
+            # Ad Mode: Product-focused, narration-only, no characters
+            logger.info(f"[DEBUG] ✅ Using AD MODE prompt (product images + narration)")
+            plot_prompt = f"""당신은 제품 광고 숏폼 영상 시나리오 작가입니다.
+제품 정보를 바탕으로 {num_cuts}개 장면으로 매력적인 광고를 만들어주세요.
+
+각 장면마다 다음 정보를 JSON 형식으로 제공하세요:
+- scene_id: scene_1, scene_2, ... 형식
+- image_prompt: 제품 이미지 생성 프롬프트 (제품 자체 또는 사용 장면)
+  - 제품을 다양한 각도, 상황에서 보여주세요
+  - 이전 장면과 동일한 이미지를 재사용하려면 빈 문자열 ""로 설정
+- text: 광고 해설 내용 (큰따옴표 없이)
+  - 제품의 특징, 장점, 사용 이점을 강조
+  - 감정을 자극하고 구매 욕구를 불러일으키는 멘트
+- speaker: 항상 "narration"
+- duration_ms: 장면 지속시간 (4000-6000)
+
+**중요 규칙**:
+1. **이미지 프롬프트**:
+   - 제품 자체를 보여주거나 제품이 사용되는 장면 묘사
+   - 제품의 핵심 특징이 시각적으로 드러나도록 작성
+   - 배경과 분위기도 함께 묘사하여 제품의 가치 강조
+
+2. **광고 카피**:
+   - 시작: 문제 제기 또는 호기심 유발
+   - 중간: 제품 특징과 장점 설명
+   - 마무리: 행동 유도 (구매, 방문 등)
+
+3. **기타**:
+   - 반드시 JSON 형식으로만 출력
+   - title: 광고 제목 (제품명 포함, 10자 이내)
+   - bgm_prompt: 광고에 어울리는 음악 스타일
+
+JSON 형식:
+{{
+  "title": "편리한 찹쌀떡",
+  "bgm_prompt": "upbeat, energetic, modern corporate music",
+  "scenes": [
+    {{
+      "scene_id": "scene_1",
+      "image_prompt": "깔끔한 포장의 찹쌀떡이 환한 빛을 받으며 테이블 위에 놓여있는 모습",
+      "text": "바쁜 아침, 간편하면서도 든든한 한 끼를 찾으시나요?",
+      "speaker": "narration",
+      "duration_ms": 5000
+    }},
+    {{
+      "scene_id": "scene_2",
+      "image_prompt": "찹쌀떡을 한 입 베어 문 클로즈업, 쫄깃한 식감이 느껴지는 장면",
+      "text": "쫄깃쫄깃한 식감과 고소한 맛이 가득한 프리미엄 찹쌀떡!",
+      "speaker": "narration",
+      "duration_ms": 4500
+    }}
+  ]
+}}"""
         else:
-            # General/Ad Mode: Simplified schema with unified image prompts
-            logger.info(f"[DEBUG] ✅ Using GENERAL MODE prompt (image_prompt + speaker schema) for mode='{mode}'")
+            # General Mode: Simplified schema with unified image prompts
+            logger.info(f"[DEBUG] ✅ Using GENERAL MODE prompt (image_prompt + speaker schema)")
             plot_prompt = f"""당신은 숏폼 영상 콘텐츠 시나리오 작가입니다.
-사용자의 요청을 {num_cuts}개 장면으로 나누어 {'광고' if mode == 'ad' else '영상'}를 만들어주세요.
+사용자의 요청을 {num_cuts}개 장면으로 나누어 영상을 만들어주세요.
 
 등장인물:
 {char_list}

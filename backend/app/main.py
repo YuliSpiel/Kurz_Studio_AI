@@ -165,13 +165,17 @@ async def create_run(spec: RunSpec):
     """
     from app.celery_app import celery
     from app.tasks.plan import plan_task
+    from datetime import datetime
     import uuid
+    import re
 
     # 폴더명으로 사용할 run_id 생성: 타임스탬프_프롬프트첫8글자
-    from datetime import datetime
-
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    prompt_clean = "".join(c for c in spec.prompt if not c.isspace())[:8]
+    # Remove URL-unsafe characters (keep only alphanumeric, underscore, hyphen)
+    prompt_clean = re.sub(r'[^a-zA-Z0-9_-]', '', spec.prompt)[:8]
+    # Fallback to UUID if prompt is empty after cleaning
+    if not prompt_clean:
+        prompt_clean = str(uuid.uuid4())[:8]
     run_id = f"{timestamp}_{prompt_clean}"
 
     logger.info(f"[DEBUG] Received run request:")
@@ -228,17 +232,42 @@ async def create_run(spec: RunSpec):
 @app.get("/api/runs/{run_id}", response_model=RunStatus)
 async def get_run(run_id: str):
     """Get run status and artifacts."""
-    if run_id not in runs:
-        raise HTTPException(status_code=404, detail="Run not found")
+    # Try to get from in-memory cache first
+    if run_id in runs:
+        run_data = runs[run_id]
+        return RunStatus(
+            run_id=run_id,
+            state=run_data["state"],
+            progress=run_data["progress"],
+            artifacts=run_data["artifacts"],
+            logs=run_data["logs"],
+        )
 
-    run_data = runs[run_id]
-    return RunStatus(
-        run_id=run_id,
-        state=run_data["state"],
-        progress=run_data["progress"],
-        artifacts=run_data["artifacts"],
-        logs=run_data["logs"],
-    )
+    # Fallback: try to load from Redis FSM
+    from app.orchestrator.fsm import get_fsm
+    fsm = get_fsm(run_id)
+    if fsm:
+        # Initialize the run in memory from Redis state
+        runs[run_id] = {
+            "run_id": run_id,
+            "spec": {},
+            "state": fsm.current_state.value,
+            "progress": 0.0,  # We don't have progress in FSM, will update via pub/sub
+            "artifacts": {},
+            "logs": [],
+            "created_at": None,
+        }
+
+        return RunStatus(
+            run_id=run_id,
+            state=fsm.current_state.value,
+            progress=0.0,
+            artifacts={},
+            logs=[],
+        )
+
+    # Not found in memory or Redis
+    raise HTTPException(status_code=404, detail="Run not found")
 
 
 @app.get("/api/fonts")
