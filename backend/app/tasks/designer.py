@@ -177,14 +177,31 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
                         seed = scene.get("bg_seed", settings.BG_SEED_BASE)
                         logger.info(f"[{run_id}] General mode scene image: {prompt[:50]}...")
                     else:
-                        # Character image (Story Mode): prompt already includes appearance + expression + pose
-                        prompt = f"{art_style}, {base_prompt}"
+                        # Character image (Story Mode): Apply base template for visual novel style
                         char_id = img_slot.get("ref_id")
                         char = next(
                             (c for c in layout.get("characters", []) if c["char_id"] == char_id),
                             None
                         )
                         seed = char.get("seed", settings.BASE_CHAR_SEED) if char else settings.BASE_CHAR_SEED
+
+                        # Visual novel character base template
+                        vn_base = (
+                            "A thigh-up standing character in anime cartoon style, "
+                            "for a visual novel sprite, "
+                            "front view, centered composition, "
+                            "same camera framing for all images, "
+                            "plain or transparent background, "
+                            "consistent proportions and pose across all expressions, "
+                            "clean lineart, flat colors with gentle cel shading, "
+                            "soft lighting, balanced anatomy, no extreme perspective, "
+                            "head near the top margin, thighs near the bottom, "
+                            "same outfit and hairstyle across all expressions, "
+                        )
+
+                        # Character-specific details + expression/pose from base_prompt
+                        prompt = f"{vn_base}{base_prompt} (no background, no props, no text, no watermark)"
+                        logger.info(f"[{run_id}] Story mode character prompt (seed={seed}): {prompt[:100]}...")
 
                         # Check character image cache (Story Mode)
                         if img_type == "character" and base_prompt in cached_characters:
