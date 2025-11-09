@@ -10,6 +10,11 @@ from typing import Tuple
 logger = logging.getLogger(__name__)
 
 
+def _is_url(text: str) -> bool:
+    """Check if text is a URL."""
+    return text.startswith(('http://', 'https://', 'www.'))
+
+
 def generate_plot_with_characters(
     run_id: str,
     prompt: str,
@@ -39,6 +44,38 @@ def generate_plot_with_characters(
 
     characters_path = output_dir / "characters.json"
     plot_path = output_dir / "plot.json"
+
+    # Ad Mode: Check if prompt is a URL and scrape product info
+    product_data = None
+    product_images = []
+    if mode == "ad" and _is_url(prompt):
+        logger.info(f"[AD MODE] Detected product URL: {prompt}")
+        try:
+            from app.utils.product_scraper import scrape_product, download_product_images
+            product_data = scrape_product(prompt)
+            logger.info(f"[AD MODE] Scraped product: {product_data.get('name', 'Unknown')}")
+
+            # Download product images if available
+            if product_data.get('images'):
+                logger.info(f"[AD MODE] Downloading {len(product_data['images'])} product images...")
+                product_images = download_product_images(product_data['images'], str(output_dir))
+                logger.info(f"[AD MODE] Downloaded {len(product_images)} product images")
+
+            # Create enriched prompt from scraped data
+            enriched_prompt = f"""제품명: {product_data['name']}
+설명: {product_data['description'][:200] if product_data['description'] else '없음'}
+특징: {', '.join(product_data['features'][:3]) if product_data['features'] else '없음'}
+가격: {product_data['price'] if product_data['price'] else '미정'}
+
+위 제품을 홍보하는 매력적인 광고 숏츠를 만들어주세요. 제품의 핵심 특징과 장점을 강조하세요."""
+
+            # Replace prompt with enriched version
+            prompt = enriched_prompt
+            logger.info("[AD MODE] Using enriched prompt from scraped data")
+
+        except Exception as e:
+            logger.warning(f"[AD MODE] Failed to scrape product URL: {e}")
+            # Continue with original URL as prompt (GPT will do its best)
 
     try:
         from openai import OpenAI
