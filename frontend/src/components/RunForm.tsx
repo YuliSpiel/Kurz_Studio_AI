@@ -8,7 +8,6 @@ interface RunFormProps {
 export default function RunForm({ onRunCreated }: RunFormProps) {
   const mode = 'general' // Fixed to general mode
   const [prompt, setPrompt] = useState('')
-  const [numCharacters, setNumCharacters] = useState<1 | 2>(1)
   const [numCuts, setNumCuts] = useState(3)
   const [artStyle, setArtStyle] = useState('파스텔 수채화')
   const [musicGenre, setMusicGenre] = useState('ambient')
@@ -72,7 +71,7 @@ export default function RunForm({ onRunCreated }: RunFormProps) {
       const result = await createRun({
         mode,
         prompt,
-        num_characters: numCharacters,
+        num_characters: 1, // Fixed to 1 character for general mode
         num_cuts: numCuts,
         art_style: artStyle,
         music_genre: musicGenre,
@@ -128,7 +127,7 @@ export default function RunForm({ onRunCreated }: RunFormProps) {
     setNumCuts(enhancementResult.suggested_num_cuts)
     setArtStyle(enhancementResult.suggested_art_style)
     setMusicGenre(enhancementResult.suggested_music_genre)
-    setNumCharacters(enhancementResult.suggested_num_characters as 1 | 2)
+    // Note: num_characters is ignored, always fixed to 1 for general mode
     setShowEnhancementPreview(false)
     setEnhancementResult(null)
   }
@@ -178,29 +177,16 @@ export default function RunForm({ onRunCreated }: RunFormProps) {
         </button>
       </div>
 
-      <div className="form-row">
-        <div className="form-group">
-          <label>등장인물 수</label>
-          <select
-            value={numCharacters}
-            onChange={(e) => setNumCharacters(Number(e.target.value) as 1 | 2)}
-          >
-            <option value={1}>1명</option>
-            <option value={2}>2명</option>
-          </select>
-        </div>
-
-        <div className="form-group">
-          <label>컷 수 (1-10)</label>
-          <input
-            type="number"
-            value={numCuts}
-            onChange={(e) => setNumCuts(Number(e.target.value))}
-            min={1}
-            max={10}
-            required
-          />
-        </div>
+      <div className="form-group">
+        <label>컷 수 (1-10)</label>
+        <input
+          type="number"
+          value={numCuts}
+          onChange={(e) => setNumCuts(Number(e.target.value))}
+          min={1}
+          max={10}
+          required
+        />
       </div>
 
       <div className="form-group">
@@ -447,22 +433,13 @@ export default function RunForm({ onRunCreated }: RunFormProps) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '20px' }}>
               <div>
                 <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px', fontSize: '13px', color: '#6B7280' }}>
                   컷 수
                 </label>
                 <div style={{ fontSize: '18px', fontWeight: '600', color: '#7C3AED' }}>
                   {enhancementResult.suggested_num_cuts}개
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px', fontSize: '13px', color: '#6B7280' }}>
-                  등장인물
-                </label>
-                <div style={{ fontSize: '18px', fontWeight: '600', color: '#7C3AED' }}>
-                  {enhancementResult.suggested_num_characters}명
                 </div>
               </div>
 
