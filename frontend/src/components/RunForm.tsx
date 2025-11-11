@@ -1,12 +1,12 @@
 import { useState, useEffect, FormEvent } from 'react'
-import { createRun, uploadReferenceImage, getAvailableFonts, Font } from '../api/client'
+import { createRun, uploadReferenceImage, getAvailableFonts, Font, enhancePrompt, PromptEnhancementResult } from '../api/client'
 
 interface RunFormProps {
   onRunCreated: (runId: string) => void
 }
 
 export default function RunForm({ onRunCreated }: RunFormProps) {
-  const [mode, setMode] = useState<'general' | 'story' | 'ad'>('general')
+  const mode = 'general' // Fixed to general mode
   const [prompt, setPrompt] = useState('')
   const [numCharacters, setNumCharacters] = useState<1 | 2>(1)
   const [numCuts, setNumCuts] = useState(3)
@@ -14,6 +14,9 @@ export default function RunForm({ onRunCreated }: RunFormProps) {
   const [musicGenre, setMusicGenre] = useState('ambient')
   const [referenceFiles, setReferenceFiles] = useState<File[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isEnhancing, setIsEnhancing] = useState(false)
+  const [enhancementResult, setEnhancementResult] = useState<PromptEnhancementResult | null>(null)
+  const [showEnhancementPreview, setShowEnhancementPreview] = useState(false)
 
   // Layout customization states
   const [videoTitle, setVideoTitle] = useState('')
@@ -99,19 +102,46 @@ export default function RunForm({ onRunCreated }: RunFormProps) {
     }
   }
 
+  const handleEnhancePrompt = async () => {
+    if (!prompt || prompt.trim().length === 0) {
+      alert('프롬프트를 먼저 입력해주세요')
+      return
+    }
+
+    setIsEnhancing(true)
+    try {
+      const result = await enhancePrompt(prompt, mode)
+      setEnhancementResult(result)
+      setShowEnhancementPreview(true)
+    } catch (error) {
+      console.error('Failed to enhance prompt:', error)
+      alert('프롬프트 풍부화 실패: ' + error)
+    } finally {
+      setIsEnhancing(false)
+    }
+  }
+
+  const handleApplyEnhancement = () => {
+    if (!enhancementResult) return
+
+    setPrompt(enhancementResult.enhanced_prompt)
+    setNumCuts(enhancementResult.suggested_num_cuts)
+    setArtStyle(enhancementResult.suggested_art_style)
+    setMusicGenre(enhancementResult.suggested_music_genre)
+    setNumCharacters(enhancementResult.suggested_num_characters as 1 | 2)
+    setShowEnhancementPreview(false)
+    setEnhancementResult(null)
+  }
+
+  const handleCancelEnhancement = () => {
+    setShowEnhancementPreview(false)
+    setEnhancementResult(null)
+  }
+
   return (
     <div className="run-form-wrapper">
       <form onSubmit={handleSubmit} className="run-form">
         <h2>새 숏츠 생성</h2>
-
-      <div className="form-group">
-        <label>모드</label>
-        <select value={mode} onChange={(e) => setMode(e.target.value as 'general' | 'story' | 'ad')}>
-          <option value="general">일반</option>
-          <option value="story">스토리텔링</option>
-          <option value="ad">광고</option>
-        </select>
-      </div>
 
       <div className="form-group">
         <label>프롬프트</label>
@@ -122,6 +152,30 @@ export default function RunForm({ onRunCreated }: RunFormProps) {
           rows={4}
           required
         />
+        <button
+          type="button"
+          onClick={handleEnhancePrompt}
+          disabled={isEnhancing || !prompt}
+          className="btn-enhance"
+          style={{
+            marginTop: '10px',
+            padding: '8px 16px',
+            backgroundColor: '#7C3AED',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: prompt ? 'pointer' : 'not-allowed',
+            fontSize: '14px',
+            fontWeight: '600',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            opacity: (isEnhancing || !prompt) ? 0.6 : 1,
+          }}
+        >
+          <span style={{ fontSize: '16px' }}>✨</span>
+          {isEnhancing ? 'AI 분석 중...' : 'AI 풍부화'}
+        </button>
       </div>
 
       <div className="form-row">
@@ -348,6 +402,139 @@ export default function RunForm({ onRunCreated }: RunFormProps) {
           {isSubmitting ? '생성 중...' : '숏츠 생성 시작'}
         </button>
       </div>
+
+      {/* Enhancement Preview Modal */}
+      {showEnhancementPreview && enhancementResult && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '30px',
+            borderRadius: '12px',
+            maxWidth: '600px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'auto',
+            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: '20px', fontSize: '24px', color: '#1F2937' }}>
+              ✨ AI 풍부화 결과
+            </h3>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#374151' }}>
+                풍부화된 프롬프트
+              </label>
+              <div style={{
+                padding: '12px',
+                backgroundColor: '#F3F4F6',
+                borderRadius: '8px',
+                fontSize: '14px',
+                lineHeight: '1.6',
+                color: '#1F2937',
+              }}>
+                {enhancementResult.enhanced_prompt}
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+              <div>
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px', fontSize: '13px', color: '#6B7280' }}>
+                  컷 수
+                </label>
+                <div style={{ fontSize: '18px', fontWeight: '600', color: '#7C3AED' }}>
+                  {enhancementResult.suggested_num_cuts}개
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px', fontSize: '13px', color: '#6B7280' }}>
+                  등장인물
+                </label>
+                <div style={{ fontSize: '18px', fontWeight: '600', color: '#7C3AED' }}>
+                  {enhancementResult.suggested_num_characters}명
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px', fontSize: '13px', color: '#6B7280' }}>
+                  화풍
+                </label>
+                <div style={{ fontSize: '16px', fontWeight: '500', color: '#1F2937' }}>
+                  {enhancementResult.suggested_art_style}
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px', fontSize: '13px', color: '#6B7280' }}>
+                  음악 장르
+                </label>
+                <div style={{ fontSize: '16px', fontWeight: '500', color: '#1F2937' }}>
+                  {enhancementResult.suggested_music_genre}
+                </div>
+              </div>
+            </div>
+
+            <div style={{
+              padding: '12px',
+              backgroundColor: '#FEF3C7',
+              borderLeft: '4px solid #F59E0B',
+              borderRadius: '6px',
+              marginBottom: '24px',
+            }}>
+              <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#92400E', marginBottom: '4px' }}>
+                💡 제안 이유
+              </div>
+              <div style={{ fontSize: '13px', color: '#78350F', lineHeight: '1.5' }}>
+                {enhancementResult.reasoning}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={handleCancelEnhancement}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#E5E7EB',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                }}
+              >
+                취소
+              </button>
+              <button
+                onClick={handleApplyEnhancement}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#7C3AED',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                }}
+              >
+                적용하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

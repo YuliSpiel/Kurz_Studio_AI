@@ -14,7 +14,7 @@ interface CharacterInput {
 }
 
 interface RunSpec {
-  mode: 'story' | 'ad'
+  mode: 'general' | 'story' | 'ad'
   prompt: string
   num_characters: 1 | 2 | 3
   num_cuts: number
@@ -24,6 +24,8 @@ interface RunSpec {
   reference_images?: string[]
   lora_strength?: number
   voice_id?: string
+  video_title?: string
+  layout_config?: Record<string, any>
 }
 
 interface RunStatus {
@@ -92,4 +94,35 @@ export async function getAvailableFonts(): Promise<Font[]> {
 
   const data = await response.json()
   return data.fonts || []
+}
+
+export interface PromptEnhancementResult {
+  enhanced_prompt: string
+  suggested_num_cuts: number
+  suggested_art_style: string
+  suggested_music_genre: string
+  suggested_num_characters: number
+  reasoning: string
+}
+
+export async function enhancePrompt(
+  originalPrompt: string,
+  mode: string = 'general'
+): Promise<PromptEnhancementResult> {
+  const response = await fetch(`${API_BASE}/v1/enhance-prompt`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      original_prompt: originalPrompt,
+      mode: mode,
+    }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to enhance prompt: ${response.statusText}`)
+  }
+
+  return response.json()
 }

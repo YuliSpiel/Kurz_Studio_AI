@@ -300,6 +300,51 @@ async def upload_reference_image(file: UploadFile = File(...)):
     return {"filename": filename, "path": str(filepath), "size": len(content)}
 
 
+@app.post("/api/v1/enhance-prompt")
+async def enhance_prompt_endpoint(request: dict):
+    """
+    Enhance user prompt using AI analysis.
+
+    Request body:
+        {
+            "original_prompt": "사용자 입력 프롬프트",
+            "mode": "general" (optional, default: "general")
+        }
+
+    Response:
+        {
+            "enhanced_prompt": "풍부화된 프롬프트",
+            "suggested_num_cuts": 3,
+            "suggested_art_style": "파스텔 수채화",
+            "suggested_music_genre": "ambient",
+            "suggested_num_characters": 1,
+            "reasoning": "제안 이유"
+        }
+    """
+    from app.utils.prompt_enhancer import enhance_prompt
+
+    original_prompt = request.get("original_prompt")
+    mode = request.get("mode", "general")
+
+    if not original_prompt:
+        raise HTTPException(status_code=400, detail="original_prompt is required")
+
+    if mode not in ["general", "story", "ad"]:
+        raise HTTPException(status_code=400, detail="mode must be 'general', 'story', or 'ad'")
+
+    try:
+        logger.info(f"[ENHANCE] Enhancing prompt for mode={mode}: '{original_prompt[:50]}...'")
+        result = enhance_prompt(original_prompt, mode)
+        logger.info(f"[ENHANCE] Successfully enhanced prompt")
+        return result
+    except ValueError as e:
+        logger.error(f"[ENHANCE] Validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[ENHANCE] Failed to enhance prompt: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to enhance prompt: {str(e)}")
+
+
 @app.websocket("/ws/{run_id}")
 async def websocket_endpoint(websocket: WebSocket, run_id: str):
     """
