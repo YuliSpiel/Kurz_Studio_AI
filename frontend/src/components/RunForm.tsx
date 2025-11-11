@@ -25,31 +25,42 @@ export default function RunForm({ onRunCreated }: RunFormProps) {
   const [subtitleFont, setSubtitleFont] = useState('AppleGothic')
   const [subtitleFontSize, setSubtitleFontSize] = useState(80)
 
-  // Font list
-  const [availableFonts, setAvailableFonts] = useState<Font[]>([])
+  // Font list with fallback defaults
+  const [availableFonts, setAvailableFonts] = useState<Font[]>([
+    { id: 'AppleGothic', name: 'Apple Gothic (시스템)', path: 'AppleGothic' },
+    { id: 'AppleMyungjo', name: 'Apple Myungjo (시스템)', path: 'AppleMyungjo' }
+  ])
 
   // Load available fonts on component mount
   useEffect(() => {
     const loadFonts = async () => {
       try {
+        console.log('Loading fonts from API...')
         const fonts = await getAvailableFonts()
-        setAvailableFonts(fonts)
+        console.log('Loaded fonts:', fonts)
 
-        // Dynamically load custom fonts for preview
-        fonts.forEach(font => {
-          // Skip system fonts (they don't have file paths in /api/fonts/)
-          if (font.id.startsWith('Apple')) return
+        if (fonts && fonts.length > 0) {
+          setAvailableFonts(fonts)
 
-          const fontFace = new FontFace(font.id, `url(/api/fonts/${font.id})`)
-          fontFace.load().then(loadedFont => {
-            document.fonts.add(loadedFont)
-            console.log(`Loaded font: ${font.id}`)
-          }).catch(err => {
-            console.warn(`Failed to load font ${font.id}:`, err)
+          // Dynamically load custom fonts for preview
+          fonts.forEach(font => {
+            // Skip system fonts (they don't have file paths in /api/fonts/)
+            if (font.id.startsWith('Apple')) return
+
+            const fontFace = new FontFace(font.id, `url(/api/fonts/${font.id})`)
+            fontFace.load().then(loadedFont => {
+              document.fonts.add(loadedFont)
+              console.log(`Loaded font: ${font.id}`)
+            }).catch(err => {
+              console.warn(`Failed to load font ${font.id}:`, err)
+            })
           })
-        })
+        } else {
+          console.warn('No fonts returned from API, using fallback fonts')
+        }
       } catch (error) {
         console.error('Failed to load fonts:', error)
+        console.log('Using fallback fonts')
       }
     }
     loadFonts()
