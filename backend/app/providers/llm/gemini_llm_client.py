@@ -10,16 +10,16 @@ logger = logging.getLogger(__name__)
 
 class GeminiLLMClient:
     """
-    Client for interacting with Google's Gemini models (gemini-2.5-flash-preview-0514).
+    Client for interacting with Google's Gemini models (gemini-2.5-flash).
     """
 
-    def __init__(self, api_key: str, model_name: str = "gemini-2.5-flash-preview-0514"):
+    def __init__(self, api_key: str, model_name: str = "gemini-2.5-flash"):
         """
         Initialize the Gemini LLM client.
 
         Args:
             api_key: Google AI API key
-            model_name: Model identifier (default: gemini-2.5-flash-preview-0514)
+            model_name: Model identifier (default: gemini-2.5-flash)
         """
         if not api_key:
             raise ValueError("Gemini API key is required")
