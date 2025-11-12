@@ -544,15 +544,26 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
         # Add audio tracks
         audio_clips = []
 
-        # Global BGM
+        # Global BGM with looping support
         global_bgm = layout.get("global_bgm")
         if global_bgm and global_bgm.get("audio_url"):
             bgm_path = global_bgm["audio_url"]
             if Path(bgm_path).exists() and Path(bgm_path).stat().st_size > 100:
                 try:
-                    bgm_clip = AudioFileClip(bgm_path).with_volume_scaled(global_bgm.get("volume", 0.5))
+                    bgm_clip = AudioFileClip(bgm_path)
+                    video_duration = final_clip.duration
+
+                    # Loop BGM if it's shorter than video
+                    if bgm_clip.duration < video_duration:
+                        from moviepy import concatenate_audioclips
+                        num_loops = int(video_duration / bgm_clip.duration) + 1
+                        logger.info(f"[{run_id}] BGM ({bgm_clip.duration:.1f}s) shorter than video ({video_duration:.1f}s), looping {num_loops} times")
+                        bgm_clip = concatenate_audioclips([bgm_clip] * num_loops)
+                        bgm_clip = bgm_clip.with_duration(video_duration)
+
+                    bgm_clip = bgm_clip.with_volume_scaled(global_bgm.get("volume", 0.5))
                     audio_clips.append(bgm_clip)
-                    logger.info(f"[{run_id}] Added BGM: {bgm_path}")
+                    logger.info(f"[{run_id}] Added BGM: {bgm_path} (duration: {bgm_clip.duration:.1f}s)")
                 except Exception as e:
                     logger.warning(f"[{run_id}] Failed to load BGM {bgm_path}: {e}")
             else:

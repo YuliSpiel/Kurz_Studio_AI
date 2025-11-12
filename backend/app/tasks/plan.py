@@ -31,7 +31,7 @@ def plan_task(self, run_id: str, spec: dict):
         spec: RunSpec as dict
     """
     logger.info(f"[{run_id}] Starting plot generation...")
-    publish_progress(run_id, state="PLOT_GENERATION", progress=0.1, log="플롯 생성 시작: 프롬프트 분석 중...")
+    publish_progress(run_id, state="PLOT_GENERATION", progress=0.1, log="기획자: 시나리오 작성 중...")
 
     try:
         # TEST: 3초 대기
@@ -45,7 +45,7 @@ def plan_task(self, run_id: str, spec: dict):
 
         # Step 1: Generate characters and plot
         logger.info(f"[{run_id}] Generating characters and plot from prompt...")
-        publish_progress(run_id, progress=0.12, log="캐릭터 및 시나리오 생성 중 (Gemini 2.5 Flash)...")
+        publish_progress(run_id, progress=0.12, log="기획자: 캐릭터 및 시나리오 생성 중 (Gemini 2.5 Flash)...")
         characters_path, plot_json_path = generate_plot_with_characters(
             run_id=run_id,
             prompt=spec["prompt"],
@@ -56,11 +56,11 @@ def plan_task(self, run_id: str, spec: dict):
         )
         logger.info(f"[{run_id}] Characters generated: {characters_path}")
         logger.info(f"[{run_id}] Plot JSON generated: {plot_json_path}")
-        publish_progress(run_id, progress=0.15, log=f"캐릭터 & 시나리오 생성 완료")
+        publish_progress(run_id, progress=0.15, log=f"기획자: 캐릭터 & 시나리오 생성 완료")
 
         # Step 2: Convert plot.json to layout.json
         logger.info(f"[{run_id}] Converting plot.json to layout.json...")
-        publish_progress(run_id, progress=0.17, log="JSON 레이아웃 변환 중...")
+        publish_progress(run_id, progress=0.17, log="기획자: 레이아웃 JSON 변환 중...")
         json_path = convert_plot_to_json(
             plot_json_path=str(plot_json_path),
             run_id=run_id,
@@ -70,7 +70,7 @@ def plan_task(self, run_id: str, spec: dict):
             layout_config=spec.get("layout_config")
         )
         logger.info(f"[{run_id}] Layout JSON generated: {json_path}")
-        publish_progress(run_id, progress=0.2, log=f"JSON 레이아웃 생성 완료: {json_path}")
+        publish_progress(run_id, progress=0.2, log=f"기획자: 레이아웃 JSON 생성 완료")
 
         # Update FSM artifacts
         from app.main import runs

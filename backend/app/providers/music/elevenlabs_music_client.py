@@ -64,8 +64,9 @@ class ElevenLabsMusicClient(MusicProvider):
 
             payload = {
                 "text": prompt,
-                "duration_seconds": min(duration_sec, 22),  # ElevenLabs 최대 22초
-                "prompt_influence": 0.3  # 프롬프트 영향력 (0-1)
+                "duration_seconds": min(duration_sec, 30),  # ElevenLabs v2 최대 30초
+                "prompt_influence": 0.3,  # 프롬프트 영향력 (0-1)
+                "model_id": "eleven_text_to_sound_v2"  # v2 모델 사용
             }
 
             with httpx.Client(timeout=60.0) as client:
