@@ -551,7 +551,7 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
             if Path(bgm_path).exists() and Path(bgm_path).stat().st_size > 100:
                 try:
                     bgm_clip = AudioFileClip(bgm_path)
-                    video_duration = final_clip.duration
+                    video_duration = final_video.duration
 
                     # Loop BGM if it's shorter than video
                     if bgm_clip.duration < video_duration:

@@ -314,6 +314,7 @@ async def enhance_prompt_endpoint(request: dict):
     Response:
         {
             "enhanced_prompt": "풍부화된 프롬프트",
+            "suggested_title": "제안된 영상 제목",
             "suggested_num_cuts": 3,
             "suggested_art_style": "파스텔 수채화",
             "suggested_music_genre": "ambient",

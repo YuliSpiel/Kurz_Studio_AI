@@ -136,6 +136,7 @@ export default function RunForm({ onRunCreated }: RunFormProps) {
     if (!enhancementResult) return
 
     setPrompt(enhancementResult.enhanced_prompt)
+    setVideoTitle(enhancementResult.suggested_title)
     setNumCuts(enhancementResult.suggested_num_cuts)
     setArtStyle(enhancementResult.suggested_art_style)
     setMusicGenre(enhancementResult.suggested_music_genre)
@@ -428,6 +429,23 @@ export default function RunForm({ onRunCreated }: RunFormProps) {
             <h3 style={{ marginTop: 0, marginBottom: '20px', fontSize: '24px', color: '#1F2937' }}>
               ✨ AI 풍부화 결과
             </h3>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#374151' }}>
+                제안된 영상 제목
+              </label>
+              <div style={{
+                padding: '12px',
+                backgroundColor: '#EEF2FF',
+                borderRadius: '8px',
+                fontSize: '16px',
+                fontWeight: '600',
+                lineHeight: '1.4',
+                color: '#4338CA',
+              }}>
+                {enhancementResult.suggested_title}
+              </div>
+            </div>
 
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#374151' }}>

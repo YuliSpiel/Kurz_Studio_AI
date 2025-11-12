@@ -23,6 +23,7 @@ def enhance_prompt(original_prompt: str, mode: str = "general") -> Dict[str, Any
     Returns:
         Dict containing:
         - enhanced_prompt: Enriched version of the prompt
+        - suggested_title: Catchy video title (max 30 chars)
         - suggested_num_cuts: Optimal number of cuts (1-10)
         - suggested_art_style: Recommended art style
         - suggested_music_genre: Recommended music genre
@@ -36,6 +37,7 @@ def enhance_prompt(original_prompt: str, mode: str = "general") -> Dict[str, Any
 
 {{
   "enhanced_prompt": "detailed Korean description",
+  "suggested_title": "catchy video title (max 30 chars)",
   "suggested_num_cuts": 1-10,
   "suggested_art_style": "style name",
   "suggested_music_genre": "genre",
@@ -80,6 +82,7 @@ def enhance_prompt(original_prompt: str, mode: str = "general") -> Dict[str, Any
         # Validate fields
         required_fields = [
             "enhanced_prompt",
+            "suggested_title",
             "suggested_num_cuts",
             "suggested_art_style",
             "suggested_music_genre",
@@ -96,7 +99,8 @@ def enhance_prompt(original_prompt: str, mode: str = "general") -> Dict[str, Any
         result["suggested_num_characters"] = max(1, min(2, int(result["suggested_num_characters"])))
 
         logger.info(f"[ENHANCE] Successfully enhanced prompt")
-        logger.info(f"[ENHANCE] Suggested cuts: {result['suggested_num_cuts']}, "
+        logger.info(f"[ENHANCE] Suggested title: '{result['suggested_title']}', "
+                   f"cuts: {result['suggested_num_cuts']}, "
                    f"characters: {result['suggested_num_characters']}, "
                    f"art_style: '{result['suggested_art_style']}'")
 

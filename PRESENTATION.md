@@ -54,7 +54,7 @@
 - 광고 CTA 자동 삽입
 
 ### 4. 완전 자동화
-- 이미지: Gemini 2.5 Flash Image (Imagen 3)
+- 이미지: Gemini 2.5 Flash Image
 - 음성: ElevenLabs TTS (한국어)
 - 배경음악: ElevenLabs Music
 - 영상 합성: MoviePy (9:16, 30fps)
@@ -87,8 +87,8 @@
 ### Core Technologies
 | 분야 | 기술 |
 |------|------|
-| **LLM** | Google Gemini 2.5 Flash |
-| **Image Generation** | Gemini 2.5 Flash Image (Imagen 3) |
+| **LLM** | Gemini 2.5 Flash |
+| **Image Generation** | Gemini 2.5 Flash Image |
 | **TTS** | ElevenLabs API |
 | **Music** | ElevenLabs Sound Effects |
 | **Video** | MoviePy (Python) |
@@ -147,7 +147,7 @@
 ┌──────────────────────────────────────────────────────────────┐
 │              External AI Services                            │
 │  - Gemini 2.5 Flash (시나리오 생성)                          │
-│  - Gemini 2.5 Flash Image (이미지 생성 - Imagen 3)          │
+│  - Gemini 2.5 Flash Image (이미지 생성)          │
 │  - ElevenLabs (TTS + Music)                                  │
 └──────────────────────────────────────────────────────────────┘
                             ↓
@@ -206,7 +206,7 @@ END (완료)
 
 ### 3. 작곡가 Agent (Composer)
 - **입력**: BGM 프롬프트 (분위기, 장르)
-- **역할**: ElevenLabs Music / Mubert로 배경음악 생성
+- **역할**: ElevenLabs Music로 배경음악 생성
 - **출력**: `audio/global_bgm.mp3`
 
 ### 4. 성우 Agent (Voice Actor)
@@ -217,6 +217,10 @@ END (완료)
 ### 5. 감독 Agent (Director)
 - **입력**: 모든 assets (images, audio)
 - **역할**: MoviePy로 영상 합성 (자막, 싱크)
+- **핵심 기능**:
+  - BGM 자동 루프: 영상 길이보다 짧은 BGM 자동 반복 재생
+  - 오디오 믹싱: 배경음악 + 음성 + SFX 동시 처리
+  - 타임라인 동기화: 이미지, 자막, 음성 정확한 싱크
 - **출력**: `final_video.mp4` (1080x1920, 30fps)
 
 ### 6. QA Agent
@@ -228,13 +232,6 @@ END (완료)
 
 ## Slide 8: 모드별 차별화 전략
 
-### Story Mode
-**타겟**: 웹툰, 웹소설 작가, 교육 콘텐츠
-- 캐릭터 초상화 + 배경 분리 렌더링
-- 캐릭터 표정/포즈 제어
-- 다크 배경 (20, 20, 40)
-- 스토리텔링 중심
-
 ### General Mode
 **타겟**: 일반 크리에이터, 개인 유튜버
 - 프롬프트만으로 즉시 생성
@@ -245,10 +242,16 @@ END (완료)
 ### Ad Mode ⭐ (Marketing Focus)
 **타겟**: 마케터, 소상공인, 스타트업
 - **제품/서비스 홍보 특화**
-- **CTA 자동 삽입** ("지금 구매하세요!")
-- **브랜드 컬러 적용**
-- **A/B 테스트용 다중 버전 생성**
+- **제품 링크 입력만으로 숏폼 자동생성**
+- **CTA 자동 삽입**
 - General Mode와 동일한 파이프라인
+
+### Story Mode
+**타겟**: 웹툰, 웹소설 작가, 교육 콘텐츠
+- 캐릭터 초상화 + 배경 분리 렌더링
+- 캐릭터 표정/포즈 제어
+- 다크 배경 (20, 20, 40)
+- 스토리텔링 중심
 
 ---
 

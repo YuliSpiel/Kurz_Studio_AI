@@ -239,7 +239,7 @@ JSON 형식:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.7,
-                max_tokens=1000
+                max_tokens=2000
             )
 
             char_json_content = char_response_text.strip()
@@ -318,6 +318,8 @@ JSON 형식:
 - char2_outfit: 의상 (프롬프트에서 명시적으로 변경 지시가 없으면 **반드시 ""로 설정하여 이전 의상 유지**)
 - speaker: 발화자 (narration, char_1, char_2, char_3 중 하나)
 - text: 대사 또는 해설 내용
+  - **⚠️ 중요: 공백 포함 최대 28자 이내로 작성** (자막 표시를 위해 짧게!)
+  - 긴 대사는 여러 장면으로 나누어 작성 (같은 캐릭터/배경 재사용 가능)
 - text_type: dialogue (대사) 또는 narration (해설)
 - emotion: neutral, happy, sad, excited, angry, surprised 중 하나
 - subtitle_position: 항상 "top" (자막은 항상 상단에 표시)
@@ -496,6 +498,8 @@ JSON 예시 (캐릭터 이미지 재사용 패턴에 주목):
   - 새로운 이미지가 필요한 경우에만 image_prompt를 작성하세요
   - 해설만 있는 장면은 배경 묘사만 작성
 - text: 대사 또는 해설 내용
+  - **⚠️ 중요: 공백 포함 최대 28자 이내로 작성** (자막 표시를 위해 짧게!)
+  - 긴 대사는 여러 장면으로 나누어 작성 (같은 이미지 재사용 가능)
   - 대사일 경우 반드시 큰따옴표로 감싸기 (예: "안녕!")
   - 해설일 경우 큰따옴표 없이 작성
 - speaker: {', '.join([c['char_id'] for c in characters_data['characters']])}, narration 중 하나
@@ -578,18 +582,28 @@ JSON 형식 (예시: 3개 컷을 요청받은 경우):
                 {"role": "user", "content": prompt}
             ],
             temperature=0.8,
-            max_tokens=2000
+            max_tokens=8000
         )
 
         plot_json_content = plot_response_text.strip()
 
         # Remove markdown code blocks if present
+        if plot_json_content.startswith("```json"):
+            plot_json_content = plot_json_content[7:]
         if plot_json_content.startswith("```"):
-            lines = plot_json_content.split("\n")
-            plot_json_content = "\n".join([line for line in lines if not line.startswith("```")])
+            plot_json_content = plot_json_content[3:]
+        if plot_json_content.endswith("```"):
+            plot_json_content = plot_json_content[:-3]
+        plot_json_content = plot_json_content.strip()
 
         # Parse and save plot JSON
-        plot_data = json.loads(plot_json_content)
+        try:
+            plot_data = json.loads(plot_json_content)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parsing failed: {e}")
+            logger.error(f"Raw JSON content (first 500 chars): {plot_json_content[:500]}")
+            logger.error(f"Raw JSON content (last 500 chars): {plot_json_content[-500:]}")
+            raise  # Re-raise to trigger fallback
 
         # VALIDATION: Check if text/speaker fields are swapped (General/Ad Mode only)
         if mode in ["general", "ad"]:

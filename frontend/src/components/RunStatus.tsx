@@ -126,9 +126,9 @@ export default function RunStatus({ runId, onCompleted }: RunStatusProps) {
 
       {logs.length > 0 && (
         <div className="logs">
-          <h3>로그</h3>
+          <h3>로그 (최신순)</h3>
           <div className="logs-content">
-            {logs.map((log, idx) => (
+            {[...logs].reverse().map((log, idx) => (
               <div key={idx} className="log-entry">
                 {log}
               </div>
