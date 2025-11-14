@@ -15,7 +15,13 @@
       "Bash(kvenv/bin/python:*)",
       "Bash(awk:*)",
       "Bash(git log:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(python list_models.py:*)",
+      "Bash(python test_gemini_client.py:*)",
+      "Bash(python test_enhance.py:*)",
+      "Bash(python:*)",
+      "Bash(curl:*)",
+      "Bash(kill:*)"
     ],
     "deny": [],
     "ask": []
