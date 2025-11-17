@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import HeroChat from './components/HeroChat'
 import RunForm from './components/RunForm'
 import StoryModeForm from './components/StoryModeForm'
 import AdModeForm from './components/AdModeForm'
@@ -11,6 +12,7 @@ function App() {
   const [appMode, setAppMode] = useState<AppMode>('general')
   const [currentRunId, setCurrentRunId] = useState<string | null>(null)
   const [completedRun, setCompletedRun] = useState<any>(null)
+  const [showDetailedForm, setShowDetailedForm] = useState(false)
 
   const handleRunCreated = (runId: string) => {
     setCurrentRunId(runId)
@@ -25,6 +27,13 @@ function App() {
   const handleReset = () => {
     setCurrentRunId(null)
     setCompletedRun(null)
+    setShowDetailedForm(false)
+  }
+
+  const handleHeroChatSubmit = (prompt: string, mode: 'general' | 'story' | 'ad') => {
+    setAppMode(mode)
+    setShowDetailedForm(true)
+    // TODO: 간단한 프롬프트로 바로 실행하거나, 상세 폼으로 이동
   }
 
   const renderModeButtons = () => (
@@ -68,40 +77,57 @@ function App() {
     <>
       <nav className="navbar">
         <div className="navbar-content">
-          <div className="navbar-logo">
-            <h1>KURZ AI</h1>
-            <p>가장 쉬운 숏폼 제작 플랫폼</p>
+          <div className="navbar-left">
+            <div className="navbar-logo" onClick={handleReset} style={{ cursor: 'pointer' }}>
+              <h1>KURZ AI</h1>
+              <p>가장 쉬운 숏폼 제작 플랫폼</p>
+            </div>
+            <div className="navbar-menu">
+              <a href="#" className="navbar-menu-item">라이브러리</a>
+              <a href="#" className="navbar-menu-item">캘린더</a>
+              <a href="#" className="navbar-menu-item">커뮤니티</a>
+            </div>
+          </div>
+          <div className="navbar-right">
+            <a href="#" className="navbar-menu-item">마이페이지</a>
           </div>
         </div>
       </nav>
 
       <div className="app">
-
-      <main className="main">
-        {renderModeButtons()}
-
-        {!currentRunId && !completedRun && renderInputForm()}
-
-        {currentRunId && (
-          <RunStatus
-            runId={currentRunId}
-            onCompleted={handleRunCompleted}
+        {!currentRunId && !completedRun && !showDetailedForm && (
+          <HeroChat
+            onSubmit={handleHeroChatSubmit}
+            disabled={!!currentRunId || !!completedRun}
           />
         )}
 
-        {completedRun && (
-          <>
-            <Player runData={completedRun} />
-            <button onClick={handleReset} className="btn-reset">
-              새로 만들기
-            </button>
-          </>
-        )}
-      </main>
+        {(showDetailedForm || currentRunId || completedRun) && (
+          <main className="main">
+            {showDetailedForm && !currentRunId && !completedRun && (
+              <>
+                {renderModeButtons()}
+                {renderInputForm()}
+              </>
+            )}
 
-      <footer className="footer">
-        <p>Powered by FastAPI + Celery + ComfyUI + React</p>
-      </footer>
+            {currentRunId && (
+              <RunStatus
+                runId={currentRunId}
+                onCompleted={handleRunCompleted}
+              />
+            )}
+
+            {completedRun && (
+              <>
+                <Player runData={completedRun} />
+                <button onClick={handleReset} className="btn-reset">
+                  새로 만들기
+                </button>
+              </>
+            )}
+          </main>
+        )}
       </div>
     </>
   )
