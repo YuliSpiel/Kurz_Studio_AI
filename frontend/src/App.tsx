@@ -5,6 +5,7 @@ import StoryModeForm from './components/StoryModeForm'
 import AdModeForm from './components/AdModeForm'
 import RunStatus from './components/RunStatus'
 import Player from './components/Player'
+import { PromptEnhancementResult } from './api/client'
 
 type AppMode = 'general' | 'story' | 'ad'
 
@@ -13,6 +14,12 @@ function App() {
   const [currentRunId, setCurrentRunId] = useState<string | null>(null)
   const [completedRun, setCompletedRun] = useState<any>(null)
   const [showDetailedForm, setShowDetailedForm] = useState(false)
+
+  // Enhancement data from HeroChat
+  const [enhancementData, setEnhancementData] = useState<{
+    enhancement: PromptEnhancementResult
+    originalPrompt: string
+  } | null>(null)
 
   const handleRunCreated = (runId: string) => {
     setCurrentRunId(runId)
@@ -28,12 +35,19 @@ function App() {
     setCurrentRunId(null)
     setCompletedRun(null)
     setShowDetailedForm(false)
+    setEnhancementData(null)
   }
 
   const handleHeroChatSubmit = (prompt: string, mode: 'general' | 'story' | 'ad') => {
     setAppMode(mode)
     setShowDetailedForm(true)
     // TODO: 간단한 프롬프트로 바로 실행하거나, 상세 폼으로 이동
+  }
+
+  const handleEnhancementReady = (enhancement: PromptEnhancementResult, originalPrompt: string) => {
+    setEnhancementData({ enhancement, originalPrompt })
+    setAppMode('general')
+    setShowDetailedForm(true)
   }
 
   const renderModeButtons = () => (
@@ -65,7 +79,7 @@ function App() {
   const renderInputForm = () => {
     switch (appMode) {
       case 'general':
-        return <RunForm onRunCreated={handleRunCreated} />
+        return <RunForm onRunCreated={handleRunCreated} enhancementData={enhancementData} />
       case 'story':
         return <StoryModeForm onRunCreated={handleRunCreated} />
       case 'ad':
@@ -98,6 +112,7 @@ function App() {
         {!currentRunId && !completedRun && !showDetailedForm && (
           <HeroChat
             onSubmit={handleHeroChatSubmit}
+            onEnhancementReady={handleEnhancementReady}
             disabled={!!currentRunId || !!completedRun}
           />
         )}

@@ -3,9 +3,13 @@ import { createRun, uploadReferenceImage, getAvailableFonts, Font, enhancePrompt
 
 interface RunFormProps {
   onRunCreated: (runId: string) => void
+  enhancementData?: {
+    enhancement: PromptEnhancementResult
+    originalPrompt: string
+  } | null
 }
 
-export default function RunForm({ onRunCreated }: RunFormProps) {
+export default function RunForm({ onRunCreated, enhancementData }: RunFormProps) {
   const mode = 'general' // Fixed to general mode
   const [prompt, setPrompt] = useState('')
   const [numCuts, setNumCuts] = useState(3)
@@ -54,6 +58,21 @@ export default function RunForm({ onRunCreated }: RunFormProps) {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
+
+  // Apply enhancement data when it changes
+  useEffect(() => {
+    if (enhancementData) {
+      const { enhancement } = enhancementData
+      setPrompt(enhancement.suggested_plot_outline)
+      setVideoTitle(enhancement.suggested_title)
+      setNumCuts(enhancement.suggested_num_cuts)
+      setNumCharacters(enhancement.suggested_num_characters as 1 | 2 | 3)
+      setArtStyle(enhancement.suggested_art_style)
+      setMusicGenre(enhancement.suggested_music_genre)
+      setNarrativeTone(enhancement.suggested_narrative_tone)
+      setPlotStructure(enhancement.suggested_plot_structure)
+    }
+  }, [enhancementData])
 
   // Load available fonts on component mount
   useEffect(() => {
