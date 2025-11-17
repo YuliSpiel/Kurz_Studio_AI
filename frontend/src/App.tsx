@@ -65,11 +65,17 @@ function App() {
   }
 
   return (
-    <div className="app">
-      <header className="header">
-        <h1>Kurz AI Studio</h1>
-        <p>AI 기반 숏폼 콘텐츠 자동 생성 플랫폼</p>
-      </header>
+    <>
+      <nav className="navbar">
+        <div className="navbar-content">
+          <div className="navbar-logo">
+            <h1>KURZ AI</h1>
+            <p>가장 쉬운 숏폼 제작 플랫폼</p>
+          </div>
+        </div>
+      </nav>
+
+      <div className="app">
 
       <main className="main">
         {renderModeButtons()}
@@ -96,7 +102,8 @@ function App() {
       <footer className="footer">
         <p>Powered by FastAPI + Celery + ComfyUI + React</p>
       </footer>
-    </div>
+      </div>
+    </>
   )
 }
 
