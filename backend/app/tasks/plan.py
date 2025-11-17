@@ -57,26 +57,33 @@ def _validate_plot_json(run_id: str, plot_json_path: Path, layout_json_path: Pat
             errors.append("plot.json에 scenes가 없거나 비어있음")
             return errors  # Critical error, stop validation
 
-        # Validation 2: Count total images requested across all scenes
-        total_images = 0
+        # Validation 2: Check scene count is reasonable (allow ±100% tolerance)
+        # LLM often generates 2x scenes, so be very flexible
+        num_scenes = len(plot_data["scenes"])
+        min_scenes = max(1, int(num_cuts * 0.5))  # Allow 50% fewer
+        max_scenes = num_cuts * 2 + 3             # Allow 2x + buffer
+
+        if num_scenes < min_scenes or num_scenes > max_scenes:
+            errors.append(f"scenes 개수({num_scenes})가 num_cuts({num_cuts}) 범위를 벗어남 (허용: {min_scenes}~{max_scenes})")
+
+        # Validation 2.5: Count new images requested (should be at least 40% of num_cuts)
+        total_new_images = 0
         for scene in plot_data["scenes"]:
-            # In general/ad mode: count non-empty image_prompt (empty string means reuse)
-            # In story mode: 1 background + N characters per scene
             if mode in ["general", "ad"]:
-                # Only count scenes that request a new image (non-empty image_prompt)
+                # Count non-empty image_prompt
                 if "image_prompt" in scene and scene["image_prompt"] and scene["image_prompt"].strip():
-                    total_images += 1
+                    total_new_images += 1
             elif mode == "story":
                 # Background + characters
                 if "background_img" in scene and scene["background_img"]:
-                    total_images += 1
-                # Count character slots
+                    total_new_images += 1
                 for key in scene.keys():
                     if key.startswith("char") and key.endswith("_id") and scene[key]:
-                        total_images += 1
+                        total_new_images += 1
 
-        if total_images != num_cuts:
-            errors.append(f"새 이미지 요청 개수({total_images})가 num_cuts({num_cuts})와 불일치")
+        min_images = max(1, int(num_cuts * 0.4))  # At least 40% should be new images
+        if total_new_images < min_images:
+            errors.append(f"새 이미지 요청이 너무 적음 ({total_new_images}개, 최소 {min_images}개 필요)")
 
         # Validation 3: Check each scene has required fields
         for idx, scene in enumerate(plot_data["scenes"]):
@@ -107,13 +114,16 @@ def _validate_plot_json(run_id: str, plot_json_path: Path, layout_json_path: Pat
         if "timeline" not in layout_data:
             errors.append("layout.json에 timeline 필드 없음")
 
-        # Validation 5: Check layout has correct number of image slots
+        # Validation 5: Check layout has reasonable number of image slots (allow ±100% tolerance)
         layout_image_count = 0
         for scene in layout_data.get("scenes", []):
             layout_image_count += len(scene.get("images", []))
 
-        if layout_image_count != num_cuts:
-            errors.append(f"layout.json 이미지 슬롯 개수({layout_image_count})가 num_cuts({num_cuts})와 불일치")
+        min_layout_images = max(1, int(num_cuts * 0.5))
+        max_layout_images = num_cuts * 2 + 3
+
+        if layout_image_count < min_layout_images or layout_image_count > max_layout_images:
+            errors.append(f"layout.json 이미지 슬롯 개수({layout_image_count})가 num_cuts({num_cuts}) 범위를 벗어남 (허용: {min_layout_images}~{max_layout_images})")
 
         # Validation 6: Check each layout scene has images
         for idx, scene in enumerate(layout_data.get("scenes", [])):

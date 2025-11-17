@@ -17,6 +17,7 @@ from fastapi import (
     WebSocketDisconnect,
     HTTPException,
     Depends,
+    Body,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -346,15 +347,15 @@ async def enhance_prompt_endpoint(request: dict):
         raise HTTPException(status_code=500, detail=f"Failed to enhance prompt: {str(e)}")
 
 
-@app.get("/api/v1/runs/{run_id}/plot-csv")
-async def get_plot_csv(run_id: str):
+@app.get("/api/v1/runs/{run_id}/plot-json")
+async def get_plot_json(run_id: str):
     """
-    Get plot as CSV for user editing.
+    Get plot as JSON for user editing.
 
     Response:
         {
             "run_id": "abc123",
-            "csv_content": "scene_id,image_prompt,text,speaker,duration_ms\n...",
+            "plot": {...},  // plot.json content
             "mode": "general"
         }
     """
@@ -362,31 +363,37 @@ async def get_plot_csv(run_id: str):
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
 
     run_data = runs[run_id]
-    plot_csv_path = run_data["artifacts"].get("plot_csv_path")
 
-    if not plot_csv_path or not Path(plot_csv_path).exists():
-        raise HTTPException(status_code=404, detail=f"Plot CSV not found for run {run_id}")
+    # Try to get from artifacts first, otherwise construct from run_id
+    plot_json_path = run_data["artifacts"].get("plot_json_path")
+    if not plot_json_path:
+        # Fallback: construct path from run_id
+        plot_json_path = Path(f"app/data/outputs/{run_id}/plot.json").resolve()
+
+    if not Path(plot_json_path).exists():
+        raise HTTPException(status_code=404, detail=f"Plot JSON not found for run {run_id}")
 
     try:
-        csv_content = Path(plot_csv_path).read_text(encoding="utf-8")
+        import json
+        plot_content = json.loads(Path(plot_json_path).read_text(encoding="utf-8"))
         return {
             "run_id": run_id,
-            "csv_content": csv_content,
+            "plot": plot_content,
             "mode": run_data.get("mode", "general")
         }
     except Exception as e:
-        logger.error(f"[{run_id}] Failed to read plot CSV: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to read plot CSV: {str(e)}")
+        logger.error(f"[{run_id}] Failed to read plot JSON: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to read plot JSON: {str(e)}")
 
 
 @app.post("/api/v1/runs/{run_id}/plot-confirm")
-async def confirm_plot(run_id: str, request: dict = None):
+async def confirm_plot(run_id: str, request: dict = Body(None)):
     """
     Confirm plot and proceed to asset generation.
 
     Request body (optional):
         {
-            "edited_csv": "scene_id,image_prompt,...\n..." (optional - if user edited CSV)
+            "edited_plot": {...} (optional - if user edited plot JSON)
         }
 
     Response:
@@ -417,25 +424,24 @@ async def confirm_plot(run_id: str, request: dict = None):
         )
 
     try:
-        # If user edited CSV, update plot.json
-        if request and "edited_csv" in request:
-            edited_csv = request["edited_csv"]
-            mode = runs[run_id].get("mode", "general")
+        # If user edited plot, update plot.json and regenerate layout.json
+        if request and "edited_plot" in request:
+            edited_plot = request["edited_plot"]
+            import json
 
-            from app.utils.plot_csv_converter import load_and_update_plot
-            plot_path = load_and_update_plot(run_id, edited_csv, mode)
-            logger.info(f"[{run_id}] Updated plot.json from user-edited CSV")
+            plot_json_path = runs[run_id]["artifacts"]["plot_json_path"]
+
+            # Save edited plot.json
+            with open(plot_json_path, 'w', encoding='utf-8') as f:
+                json.dump(edited_plot, f, indent=2, ensure_ascii=False)
+
+            logger.info(f"[{run_id}] Updated plot.json from user edits")
 
             # Regenerate layout.json from updated plot.json
             from app.utils.json_converter import generate_layout
-            import json
 
             spec = runs[run_id]["spec"]
-            plot_json_path = runs[run_id]["artifacts"]["plot_json_path"]
             characters_json_path = runs[run_id]["artifacts"]["characters_path"]
-
-            with open(plot_json_path, 'r', encoding='utf-8') as f:
-                plot_data = json.load(f)
 
             characters_data = None
             if Path(characters_json_path).exists():
@@ -443,7 +449,7 @@ async def confirm_plot(run_id: str, request: dict = None):
                     characters_data = json.load(f)
 
             output_dir = Path(f"app/data/outputs/{run_id}")
-            layout_path = generate_layout(plot_data, characters_data, output_dir, spec)
+            layout_path = generate_layout(edited_plot, characters_data, output_dir, spec)
             runs[run_id]["artifacts"]["json_path"] = str(layout_path)
             logger.info(f"[{run_id}] Regenerated layout.json from edited plot")
 

@@ -4,9 +4,8 @@ import StoryModeForm from './components/StoryModeForm'
 import AdModeForm from './components/AdModeForm'
 import RunStatus from './components/RunStatus'
 import Player from './components/Player'
-import LayoutTestTool from './components/LayoutTestTool'
 
-type AppMode = 'general' | 'story' | 'ad' | 'test'
+type AppMode = 'general' | 'story' | 'ad'
 
 function App() {
   const [appMode, setAppMode] = useState<AppMode>('general')
@@ -51,13 +50,6 @@ function App() {
       >
         광고모드
       </button>
-      <button
-        className={`mode-btn ${appMode === 'test' ? 'active' : ''}`}
-        onClick={() => setAppMode('test')}
-        disabled={!!currentRunId || !!completedRun}
-      >
-        레이아웃 테스트
-      </button>
     </div>
   )
 
@@ -69,8 +61,6 @@ function App() {
         return <StoryModeForm onRunCreated={handleRunCreated} />
       case 'ad':
         return <AdModeForm onRunCreated={handleRunCreated} />
-      case 'test':
-        return <LayoutTestTool />
     }
   }
 

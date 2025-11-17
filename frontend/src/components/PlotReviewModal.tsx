@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getPlotCsv, confirmPlot, regeneratePlot, PlotCsvData } from '../api/client'
+import { getPlotJson, confirmPlot, regeneratePlot, PlotJsonData } from '../api/client'
 
 interface PlotReviewModalProps {
   runId: string
@@ -7,36 +7,62 @@ interface PlotReviewModalProps {
   onConfirmed: () => void
 }
 
+interface Scene {
+  scene_id: string
+  image_prompt: string
+  text: string
+  speaker: string
+  duration_ms: number
+}
+
 export default function PlotReviewModal({ runId, onClose, onConfirmed }: PlotReviewModalProps) {
-  const [plotData, setPlotData] = useState<PlotCsvData | null>(null)
-  const [csvContent, setCsvContent] = useState('')
+  const [plotData, setPlotData] = useState<PlotJsonData | null>(null)
+  const [scenes, setScenes] = useState<Scene[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isConfirming, setIsConfirming] = useState(false)
   const [isRegenerating, setIsRegenerating] = useState(false)
   const [hasEdited, setHasEdited] = useState(false)
 
   useEffect(() => {
-    loadPlotCsv()
+    loadPlotJson()
   }, [runId])
 
-  const loadPlotCsv = async () => {
+  const loadPlotJson = async () => {
     setIsLoading(true)
-    try {
-      const data = await getPlotCsv(runId)
-      setPlotData(data)
-      setCsvContent(data.csv_content)
-    } catch (error) {
-      console.error('Failed to load plot CSV:', error)
-      alert('플롯 CSV 로드 실패: ' + error)
-    } finally {
-      setIsLoading(false)
+    let retries = 0
+    const maxRetries = 10 // 최대 10초 대기 (1초 간격)
+
+    while (retries < maxRetries) {
+      try {
+        const data = await getPlotJson(runId)
+        setPlotData(data)
+        setScenes(data.plot.scenes)
+        setIsLoading(false)
+        return // 성공하면 종료
+      } catch (error) {
+        retries++
+        if (retries >= maxRetries) {
+          console.error('Failed to load plot JSON after retries:', error)
+          alert('플롯 JSON 로드 실패: ' + error)
+          setIsLoading(false)
+          return
+        }
+        // 1초 대기 후 재시도
+        console.log(`Plot JSON not ready yet, retrying (${retries}/${maxRetries})...`)
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
     }
   }
 
   const handleConfirm = async () => {
     setIsConfirming(true)
     try {
-      await confirmPlot(runId, hasEdited ? csvContent : undefined)
+      const editedPlot = hasEdited ? {
+        title: plotData?.plot.title,
+        bgm_prompt: plotData?.plot.bgm_prompt,
+        scenes: scenes
+      } : undefined
+      await confirmPlot(runId, editedPlot)
       alert('플롯이 확정되었습니다. 에셋 생성이 시작됩니다.')
       onConfirmed()
       onClose()
@@ -66,8 +92,18 @@ export default function PlotReviewModal({ runId, onClose, onConfirmed }: PlotRev
     }
   }
 
-  const handleCsvChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setCsvContent(e.target.value)
+  const handleSceneEdit = (sceneId: string, field: keyof Scene, value: string | number) => {
+    setScenes(prevScenes =>
+      prevScenes.map(scene =>
+        scene.scene_id === sceneId ? { ...scene, [field]: value } : scene
+      )
+    )
+    setHasEdited(true)
+  }
+
+  const handleDeleteScene = (sceneId: string) => {
+    if (!confirm('이 장면을 삭제하시겠습니까?')) return
+    setScenes(prevScenes => prevScenes.filter(scene => scene.scene_id !== sceneId))
     setHasEdited(true)
   }
 
@@ -94,24 +130,87 @@ export default function PlotReviewModal({ runId, onClose, onConfirmed }: PlotRev
           <div style={infoBoxStyle}>
             <p><strong>Run ID:</strong> {runId}</p>
             <p><strong>모드:</strong> {plotData?.mode || 'general'}</p>
+            <p><strong>총 장면 수:</strong> {scenes.length}개</p>
             <p style={{ marginTop: '10px', fontSize: '14px', color: '#6B7280' }}>
-              아래 CSV를 직접 수정할 수 있습니다. 수정 후 "확정" 버튼을 누르면 수정된 내용으로 영상이 생성됩니다.
+              각 장면을 클릭하여 수정할 수 있습니다. 수정 후 "확정" 버튼을 누르면 수정된 내용으로 영상이 생성됩니다.
             </p>
           </div>
 
-          <div style={editorContainerStyle}>
-            <label style={labelStyle}>플롯 CSV (수정 가능)</label>
-            <textarea
-              value={csvContent}
-              onChange={handleCsvChange}
-              style={textareaStyle}
-              spellCheck={false}
-            />
-            {hasEdited && (
-              <p style={editedWarningStyle}>
-                ⚠️ CSV가 수정되었습니다. 확정 시 수정된 내용이 반영됩니다.
-              </p>
-            )}
+          {hasEdited && (
+            <p style={editedWarningStyle}>
+              ⚠️ 플롯이 수정되었습니다. 확정 시 수정된 내용이 반영됩니다.
+            </p>
+          )}
+
+          <div style={scenesContainerStyle}>
+            {scenes.map((scene, index) => (
+              <div key={scene.scene_id} style={sceneCardStyle}>
+                <div style={sceneHeaderStyle}>
+                  <span style={sceneNumberStyle}>장면 {index + 1}</span>
+                  <button
+                    onClick={() => handleDeleteScene(scene.scene_id)}
+                    style={deleteButtonStyle}
+                    title="장면 삭제"
+                  >
+                    🗑️
+                  </button>
+                </div>
+
+                <div style={sceneFieldStyle}>
+                  <label style={fieldLabelStyle}>🎬 장면 ID</label>
+                  <input
+                    type="text"
+                    value={scene.scene_id}
+                    onChange={(e) => handleSceneEdit(scene.scene_id, 'scene_id', e.target.value)}
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div style={sceneFieldStyle}>
+                  <label style={fieldLabelStyle}>🖼️ 이미지 프롬프트</label>
+                  <textarea
+                    value={scene.image_prompt}
+                    onChange={(e) => handleSceneEdit(scene.scene_id, 'image_prompt', e.target.value)}
+                    style={textareaFieldStyle}
+                    rows={3}
+                  />
+                </div>
+
+                <div style={sceneFieldStyle}>
+                  <label style={fieldLabelStyle}>💬 대사/자막</label>
+                  <textarea
+                    value={scene.text}
+                    onChange={(e) => handleSceneEdit(scene.scene_id, 'text', e.target.value)}
+                    style={textareaFieldStyle}
+                    rows={2}
+                  />
+                </div>
+
+                <div style={sceneRowStyle}>
+                  <div style={{ ...sceneFieldStyle, flex: 1 }}>
+                    <label style={fieldLabelStyle}>🎤 화자</label>
+                    <input
+                      type="text"
+                      value={scene.speaker}
+                      onChange={(e) => handleSceneEdit(scene.scene_id, 'speaker', e.target.value)}
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div style={{ ...sceneFieldStyle, flex: 1 }}>
+                    <label style={fieldLabelStyle}>⏱️ 길이 (ms)</label>
+                    <input
+                      type="number"
+                      value={scene.duration_ms}
+                      onChange={(e) => handleSceneEdit(scene.scene_id, 'duration_ms', parseInt(e.target.value, 10))}
+                      style={inputStyle}
+                      min={1000}
+                      step={500}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -210,34 +309,92 @@ const infoBoxStyle: React.CSSProperties = {
   marginBottom: '20px',
 }
 
-const editorContainerStyle: React.CSSProperties = {
-  marginBottom: '20px',
-}
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontWeight: 'bold',
-  marginBottom: '8px',
-  fontSize: '14px',
-  color: '#374151',
-}
-
-const textareaStyle: React.CSSProperties = {
-  width: '100%',
-  minHeight: '400px',
+const editedWarningStyle: React.CSSProperties = {
+  marginTop: '0',
+  marginBottom: '16px',
   padding: '12px',
   fontSize: '13px',
-  fontFamily: 'monospace',
-  border: '1px solid #D1D5DB',
+  color: '#D97706',
+  backgroundColor: '#FEF3C7',
+  border: '1px solid #F59E0B',
   borderRadius: '6px',
-  resize: 'vertical',
+  fontWeight: '500',
 }
 
-const editedWarningStyle: React.CSSProperties = {
-  marginTop: '8px',
+const scenesContainerStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '16px',
+}
+
+const sceneCardStyle: React.CSSProperties = {
+  backgroundColor: '#FFFFFF',
+  border: '2px solid #E5E7EB',
+  borderRadius: '8px',
+  padding: '16px',
+  transition: 'all 0.2s',
+}
+
+const sceneHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: '12px',
+  paddingBottom: '8px',
+  borderBottom: '1px solid #E5E7EB',
+}
+
+const sceneNumberStyle: React.CSSProperties = {
+  fontSize: '16px',
+  fontWeight: 'bold',
+  color: '#1F2937',
+}
+
+const deleteButtonStyle: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  fontSize: '20px',
+  cursor: 'pointer',
+  padding: '4px',
+  opacity: 0.6,
+  transition: 'opacity 0.2s',
+}
+
+const sceneFieldStyle: React.CSSProperties = {
+  marginBottom: '12px',
+}
+
+const sceneRowStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: '12px',
+  marginBottom: '0',
+}
+
+const fieldLabelStyle: React.CSSProperties = {
+  display: 'block',
   fontSize: '13px',
-  color: '#D97706',
-  fontWeight: '500',
+  fontWeight: '600',
+  color: '#4B5563',
+  marginBottom: '6px',
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '8px 10px',
+  fontSize: '14px',
+  border: '1px solid #D1D5DB',
+  borderRadius: '4px',
+  fontFamily: 'inherit',
+}
+
+const textareaFieldStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '8px 10px',
+  fontSize: '14px',
+  border: '1px solid #D1D5DB',
+  borderRadius: '4px',
+  fontFamily: 'inherit',
+  resize: 'vertical',
 }
 
 const footerStyle: React.CSSProperties = {

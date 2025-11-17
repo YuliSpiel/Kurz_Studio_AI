@@ -137,24 +137,34 @@ export async function enhancePrompt(
   return response.json()
 }
 
-export interface PlotCsvData {
+export interface PlotJsonData {
   run_id: string
-  csv_content: string
+  plot: {
+    title?: string
+    bgm_prompt?: string
+    scenes: Array<{
+      scene_id: string
+      image_prompt: string
+      text: string
+      speaker: string
+      duration_ms: number
+    }>
+  }
   mode: string
 }
 
-export async function getPlotCsv(runId: string): Promise<PlotCsvData> {
-  const response = await fetch(`${API_BASE}/v1/runs/${runId}/plot-csv`)
+export async function getPlotJson(runId: string): Promise<PlotJsonData> {
+  const response = await fetch(`${API_BASE}/v1/runs/${runId}/plot-json`)
 
   if (!response.ok) {
-    throw new Error(`Failed to get plot CSV: ${response.statusText}`)
+    throw new Error(`Failed to get plot JSON: ${response.statusText}`)
   }
 
   return response.json()
 }
 
-export async function confirmPlot(runId: string, editedCsv?: string): Promise<void> {
-  const body = editedCsv ? { edited_csv: editedCsv } : {}
+export async function confirmPlot(runId: string, editedPlot?: any): Promise<void> {
+  const body = editedPlot ? { edited_plot: editedPlot } : {}
 
   const response = await fetch(`${API_BASE}/v1/runs/${runId}/plot-confirm`, {
     method: 'POST',
