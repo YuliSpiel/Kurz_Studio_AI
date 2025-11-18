@@ -180,6 +180,7 @@ async def create_run(spec: RunSpec):
     logger.info(f"[DEBUG]   num_cuts={spec.num_cuts}")
     logger.info(f"[DEBUG]   num_characters={spec.num_characters}")
     logger.info(f"[DEBUG]   characters={'YES (' + str(len(spec.characters)) + ' chars)' if spec.characters else 'NO'}")
+    logger.info(f"[DEBUG]   review_mode={spec.review_mode}")
     logger.info(f"Creating run {run_id} with spec: {spec.mode}, {spec.num_cuts} cuts")
 
     # Initialize FSM
@@ -199,7 +200,11 @@ async def create_run(spec: RunSpec):
         "artifacts": {},
         "logs": [],
         "created_at": None,  # Add timestamp in production
+        "mode": spec.mode,  # Add mode for easy access
     }
+
+    logger.info(f"[{run_id}] Added to runs dict. Total runs: {len(runs)}")
+    logger.info(f"[{run_id}] Verification: run_id in runs = {run_id in runs}")
 
     # Transition to PLOT_GENERATION and start async task
     if fsm.transition_to(RunState.PLOT_GENERATION):
@@ -344,7 +349,7 @@ async def enhance_prompt_endpoint(request: dict):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"[ENHANCE] Failed to enhance prompt: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to enhance prompt: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"프롬프트 분석 실패: {str(e)}")
 
 
 @app.get("/api/v1/runs/{run_id}/plot-json")
@@ -359,27 +364,51 @@ async def get_plot_json(run_id: str):
             "mode": "general"
         }
     """
-    if run_id not in runs:
-        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    logger.info(f"[{run_id}] plot-json requested")
+    logger.info(f"[{run_id}] run_id in runs dict: {run_id in runs}")
 
-    run_data = runs[run_id]
+    # Try to get plot_json_path from runs dict if available
+    plot_json_path = None
+    mode = "general"  # default mode
 
-    # Try to get from artifacts first, otherwise construct from run_id
-    plot_json_path = run_data["artifacts"].get("plot_json_path")
+    if run_id in runs:
+        run_data = runs[run_id]
+        plot_json_path = run_data["artifacts"].get("plot_json_path")
+        mode = run_data.get("spec", {}).get("mode", mode)
+
+    # Fallback: construct path from run_id (useful after server restart)
     if not plot_json_path:
-        # Fallback: construct path from run_id
         plot_json_path = Path(f"app/data/outputs/{run_id}/plot.json").resolve()
+        logger.info(f"[{run_id}] Using fallback path: {plot_json_path}")
 
+    # Check if file exists
     if not Path(plot_json_path).exists():
-        raise HTTPException(status_code=404, detail=f"Plot JSON not found for run {run_id}")
+        # Provide more helpful error message
+        if run_id not in runs:
+            logger.warning(f"[{run_id}] Run not in memory (server may have restarted) and file not found")
+            raise HTTPException(status_code=404, detail=f"Plot JSON not found. The run may still be generating or the server was restarted.")
+        else:
+            logger.warning(f"[{run_id}] File not found at: {plot_json_path}")
+            raise HTTPException(status_code=404, detail=f"Plot JSON file not generated yet. Please wait...")
 
     try:
         import json
         plot_content = json.loads(Path(plot_json_path).read_text(encoding="utf-8"))
+
+        # Try to infer mode from plot content if not available
+        if "scenes" in plot_content:
+            first_scene = plot_content["scenes"][0] if plot_content["scenes"] else {}
+            # Story mode has char1_id, General/Ad mode has image_prompt
+            if "char1_id" in first_scene:
+                mode = "story"
+            elif "image_prompt" in first_scene:
+                mode = "general"  # or could be "ad", but we default to general
+
+        logger.info(f"[{run_id}] Successfully loaded plot.json (mode: {mode})")
         return {
             "run_id": run_id,
             "plot": plot_content,
-            "mode": run_data.get("mode", "general")
+            "mode": mode
         }
     except Exception as e:
         logger.error(f"[{run_id}] Failed to read plot JSON: {e}")
@@ -415,6 +444,13 @@ async def confirm_plot(run_id: str, request: dict = Body(None)):
     if run_id not in runs and not output_dir.exists():
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
 
+    # CRITICAL: Clear in-memory cache to force reload from Redis
+    # This ensures we get the latest FSM state updated by Celery worker
+    from app.orchestrator.fsm import _fsm_registry
+    if run_id in _fsm_registry:
+        del _fsm_registry[run_id]
+        logger.info(f"[{run_id}] Cleared FSM from memory cache to force Redis reload")
+
     fsm = get_fsm(run_id)
     if not fsm:
         raise HTTPException(status_code=404, detail=f"FSM not found for run {run_id}")
@@ -434,6 +470,17 @@ async def confirm_plot(run_id: str, request: dict = Body(None)):
             characters_json_path = runs[run_id]["artifacts"].get("characters_path")
             layout_json_path = runs[run_id]["artifacts"].get("json_path")
             spec = runs[run_id].get("spec", {})
+
+            # CRITICAL: If layout_json_path is None, fallback to filesystem
+            if layout_json_path is None:
+                layout_json_path = output_dir / "layout.json"
+                logger.warning(f"[{run_id}] layout_json_path was None in runs dict, using filesystem fallback")
+
+            # Ensure all paths exist, if not fallback to filesystem
+            if plot_json_path is None:
+                plot_json_path = output_dir / "plot.json"
+            if characters_json_path is None:
+                characters_json_path = output_dir / "characters.json"
         else:
             # Fallback to filesystem
             plot_json_path = output_dir / "plot.json"
@@ -457,14 +504,46 @@ async def confirm_plot(run_id: str, request: dict = Body(None)):
             logger.info(f"[{run_id}] Updated plot.json from user edits")
 
             # Regenerate layout.json from updated plot.json
-            from app.utils.json_converter import generate_layout
+            from app.utils.json_converter import convert_plot_to_json
 
             characters_data = None
             if Path(characters_json_path).exists():
                 with open(characters_json_path, 'r', encoding='utf-8') as f:
                     characters_data = json.load(f)
 
-            layout_path = generate_layout(edited_plot, characters_data, output_dir, spec)
+            # Update plot.json with edited characters if they exist
+            if "characters" in edited_plot:
+                # Update appearance field in characters.json from description in edited_plot
+                updated_characters_list = []
+                for char in edited_plot["characters"]:
+                    char_copy = {
+                        "char_id": char["char_id"],
+                        "name": char["name"],
+                        "appearance": char.get("description", ""),  # Map description -> appearance
+                    }
+                    # Preserve voice_id and seed if they exist in original characters.json
+                    if characters_data:
+                        for orig_char in characters_data.get("characters", []):
+                            if orig_char["char_id"] == char["char_id"]:
+                                char_copy["voice_id"] = orig_char.get("voice_id")
+                                char_copy["seed"] = orig_char.get("seed")
+                                break
+                    updated_characters_list.append(char_copy)
+
+                updated_characters = {"characters": updated_characters_list}
+                with open(characters_json_path, 'w', encoding='utf-8') as f:
+                    json.dump(updated_characters, f, indent=2, ensure_ascii=False)
+                logger.info(f"[{run_id}] Updated characters.json from edited plot")
+
+            # Convert plot.json to layout.json
+            layout_path = convert_plot_to_json(
+                plot_json_path=str(plot_json_path),
+                run_id=run_id,
+                art_style=spec.get("art_style", "파스텔 수채화"),
+                music_genre=spec.get("music_genre", "ambient"),
+                video_title=spec.get("video_title"),
+                layout_config=spec.get("layout_config")
+            )
 
             # Update runs if in memory
             if run_id in runs:

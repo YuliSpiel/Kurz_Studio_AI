@@ -137,17 +137,23 @@ export async function enhancePrompt(
   return response.json()
 }
 
+export interface Character {
+  char_id: string
+  name: string
+  description: string
+}
+
 export interface PlotJsonData {
   run_id: string
   plot: {
     title?: string
     bgm_prompt?: string
+    characters?: Character[]
     scenes: Array<{
       scene_id: string
       image_prompt: string
       text: string
       speaker: string
-      duration_ms: number
     }>
   }
   mode: string

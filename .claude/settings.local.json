@@ -26,7 +26,10 @@
       "Bash(npm run build:*)",
       "Bash(lsof:*)",
       "Bash(cat:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(find:*)",
+      "Bash(uvicorn:*)",
+      "Bash(redis-cli:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,8 +1,8 @@
-import { useState, useEffect, FormEvent } from 'react'
+import { useState, useEffect } from 'react'
 import { createRun, uploadReferenceImage, getAvailableFonts, Font, enhancePrompt, PromptEnhancementResult } from '../api/client'
 
 interface RunFormProps {
-  onRunCreated: (runId: string) => void
+  onRunCreated: (runId: string, reviewMode?: boolean) => void
   enhancementData?: {
     enhancement: PromptEnhancementResult
     originalPrompt: string
@@ -149,7 +149,7 @@ export default function RunForm({ onRunCreated, enhancementData }: RunFormProps)
         review_mode: reviewMode,
       })
 
-      onRunCreated(result.run_id)
+      onRunCreated(result.run_id, reviewMode)
     } catch (error) {
       console.error('Failed to create run:', error)
       alert('Run 생성 실패: ' + error)
@@ -208,7 +208,7 @@ export default function RunForm({ onRunCreated, enhancementData }: RunFormProps)
 
   return (
     <div className="run-form-wrapper">
-      <form onSubmit={handleSubmit} className="run-form">
+      <form className="run-form">
         <h2>새 숏츠 생성</h2>
 
       <div className="form-group">

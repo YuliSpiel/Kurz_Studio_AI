@@ -166,12 +166,11 @@ def get_fsm(run_id: str) -> Optional[FSM]:
     """
     Get FSM instance for run_id.
     Uses Redis for cross-process sharing between FastAPI and Celery.
-    """
-    # Try in-memory first
-    if run_id in _fsm_registry:
-        return _fsm_registry[run_id]
 
-    # Try Redis (for Celery workers)
+    IMPORTANT: Always loads from Redis first to ensure fresh state across processes.
+    This prevents stale in-memory cache issues when Celery workers share FSM state.
+    """
+    # Always try Redis first for freshest state (critical for cross-process consistency)
     try:
         from app.config import settings
         import redis
@@ -181,11 +180,16 @@ def get_fsm(run_id: str) -> Optional[FSM]:
         fsm_data = r.get(f"fsm:{run_id}")
         if fsm_data:
             fsm = pickle.loads(fsm_data)
-            _fsm_registry[run_id] = fsm  # Cache in memory
+            _fsm_registry[run_id] = fsm  # Update in-memory cache
             logger.info(f"Loaded FSM for run {run_id} from Redis")
             return fsm
     except Exception as e:
         logger.error(f"Failed to load FSM from Redis for run {run_id}: {e}")
+
+    # Fallback to in-memory cache only if Redis fails
+    if run_id in _fsm_registry:
+        logger.warning(f"Using stale in-memory FSM for run {run_id} (Redis unavailable)")
+        return _fsm_registry[run_id]
 
     return None
 

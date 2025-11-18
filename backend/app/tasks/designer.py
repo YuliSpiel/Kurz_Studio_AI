@@ -87,10 +87,30 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
         # Load characters.json for appearance info
         characters_json_path = Path(json_path).parent / "characters.json"
         characters_data = {}
+        char_descriptions = {}  # char_id -> description mapping
         if characters_json_path.exists():
             with open(characters_json_path, "r", encoding="utf-8") as f:
                 characters_data = json.load(f)
             logger.info(f"[{run_id}] Loaded characters.json for appearance data")
+
+            # Build character description lookup
+            for char in characters_data.get("characters", []):
+                if char.get("appearance"):
+                    char_descriptions[char["char_id"]] = char["appearance"]
+            logger.info(f"[{run_id}] [TEMPLATE] Loaded {len(char_descriptions)} character descriptions for substitution")
+
+        def substitute_char_variables(prompt: str) -> str:
+            """Replace {char_1}, {char_2} etc. with actual character descriptions."""
+            if not prompt or not char_descriptions:
+                return prompt
+
+            result = prompt
+            for char_id, description in char_descriptions.items():
+                placeholder = f"{{{char_id}}}"
+                if placeholder in result:
+                    result = result.replace(placeholder, description)
+                    logger.debug(f"[{run_id}] [TEMPLATE] Substituted {placeholder} with description")
+            return result
 
         # Get image provider
         client = None
@@ -201,6 +221,9 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
                     # Use pre-computed prompt from json_converter
                     art_style = spec.get('art_style', '파스텔 수채화')
                     base_prompt = img_slot["image_prompt"]
+
+                    # TEMPLATE SUBSTITUTION: Replace {char_1}, {char_2} etc.
+                    base_prompt = substitute_char_variables(base_prompt)
 
                     if img_type == "background":
                         # Background image: use prompt directly with art style

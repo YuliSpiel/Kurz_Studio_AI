@@ -121,130 +121,212 @@ export default function PlotReviewModal({ runId, onClose, onConfirmed }: PlotRev
   return (
     <div style={overlayStyle}>
       <div style={modalStyle}>
-        <div style={headerStyle}>
-          <h2>📋 플롯 검수</h2>
-          <button onClick={onClose} style={closeButtonStyle}>✕</button>
-        </div>
-
-        <div style={contentStyle}>
-          <div style={infoBoxStyle}>
-            <p><strong>Run ID:</strong> {runId}</p>
-            <p><strong>모드:</strong> {plotData?.mode || 'general'}</p>
-            <p><strong>총 장면 수:</strong> {scenes.length}개</p>
-            <p style={{ marginTop: '10px', fontSize: '14px', color: '#6B7280' }}>
-              각 장면을 클릭하여 수정할 수 있습니다. 수정 후 "확정" 버튼을 누르면 수정된 내용으로 영상이 생성됩니다.
-            </p>
-          </div>
-
-          {hasEdited && (
-            <p style={editedWarningStyle}>
-              ⚠️ 플롯이 수정되었습니다. 확정 시 수정된 내용이 반영됩니다.
-            </p>
-          )}
-
-          <div style={scenesContainerStyle}>
-            {scenes.map((scene, index) => (
-              <div key={scene.scene_id} style={sceneCardStyle}>
-                <div style={sceneHeaderStyle}>
-                  <span style={sceneNumberStyle}>장면 {index + 1}</span>
-                  <button
-                    onClick={() => handleDeleteScene(scene.scene_id)}
-                    style={deleteButtonStyle}
-                    title="장면 삭제"
-                  >
-                    🗑️
-                  </button>
+        <div style={modalContentStyle}>
+          {/* Left Stepper */}
+          <div style={stepperContainerStyle}>
+            <h3 style={stepperTitleStyle}>검수 단계</h3>
+            <div style={stepperListStyle}>
+              {/* Step 1: 시나리오 작성 (PLOT_REVIEW) */}
+              <div style={stepItemStyle}>
+                <div style={{
+                  ...stepCircleStyle,
+                  ...activeStepCircleStyle
+                }}>
+                  <span style={stepIconStyle}>📋</span>
                 </div>
-
-                <div style={sceneFieldStyle}>
-                  <label style={fieldLabelStyle}>🎬 장면 ID</label>
-                  <input
-                    type="text"
-                    value={scene.scene_id}
-                    onChange={(e) => handleSceneEdit(scene.scene_id, 'scene_id', e.target.value)}
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div style={sceneFieldStyle}>
-                  <label style={fieldLabelStyle}>🖼️ 이미지 프롬프트</label>
-                  <textarea
-                    value={scene.image_prompt}
-                    onChange={(e) => handleSceneEdit(scene.scene_id, 'image_prompt', e.target.value)}
-                    style={textareaFieldStyle}
-                    rows={3}
-                  />
-                </div>
-
-                <div style={sceneFieldStyle}>
-                  <label style={fieldLabelStyle}>💬 대사/자막</label>
-                  <textarea
-                    value={scene.text}
-                    onChange={(e) => handleSceneEdit(scene.scene_id, 'text', e.target.value)}
-                    style={textareaFieldStyle}
-                    rows={2}
-                  />
-                </div>
-
-                <div style={sceneRowStyle}>
-                  <div style={{ ...sceneFieldStyle, flex: 1 }}>
-                    <label style={fieldLabelStyle}>🎤 화자</label>
-                    <input
-                      type="text"
-                      value={scene.speaker}
-                      onChange={(e) => handleSceneEdit(scene.scene_id, 'speaker', e.target.value)}
-                      style={inputStyle}
-                    />
+                <div style={stepLabelContainerStyle}>
+                  <div style={{
+                    ...stepLabelStyle,
+                    ...activeStepLabelStyle
+                  }}>
+                    시나리오 작성
                   </div>
-
-                  <div style={{ ...sceneFieldStyle, flex: 1 }}>
-                    <label style={fieldLabelStyle}>⏱️ 길이 (ms)</label>
-                    <input
-                      type="number"
-                      value={scene.duration_ms}
-                      onChange={(e) => handleSceneEdit(scene.scene_id, 'duration_ms', parseInt(e.target.value, 10))}
-                      style={inputStyle}
-                      min={1000}
-                      step={500}
-                    />
+                  <div style={stepDescriptionStyle}>
+                    플롯을 검토하고 수정합니다
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
+              <div style={stepConnectorStyle} />
 
-        <div style={footerStyle}>
-          <button
-            onClick={handleRegenerate}
-            disabled={isRegenerating || isConfirming}
-            style={{
-              ...buttonStyle,
-              backgroundColor: isRegenerating ? '#9CA3AF' : '#EF4444',
-            }}
-          >
-            {isRegenerating ? '재생성 중...' : '🔄 다시 만들기'}
-          </button>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              onClick={onClose}
-              style={{
-                ...buttonStyle,
-                backgroundColor: '#6B7280',
-              }}
-            >
-              취소
-            </button>
-            <button
-              onClick={handleConfirm}
-              disabled={isConfirming || isRegenerating}
-              style={{
-                ...buttonStyle,
-                backgroundColor: isConfirming ? '#9CA3AF' : '#10B981',
-              }}
-            >
-              {isConfirming ? '확정 중...' : '✓ 확정'}
-            </button>
+              {/* Step 2: 에셋 생성 (Pending) */}
+              <div style={stepItemStyle}>
+                <div style={{
+                  ...stepCircleStyle,
+                  ...pendingStepCircleStyle
+                }}>
+                  <span style={stepIconStyle}>🎨</span>
+                </div>
+                <div style={stepLabelContainerStyle}>
+                  <div style={stepLabelStyle}>
+                    에셋 생성
+                  </div>
+                  <div style={stepDescriptionStyle}>
+                    이미지, 음악, 음성을 생성합니다
+                  </div>
+                </div>
+              </div>
+              <div style={stepConnectorStyle} />
+
+              {/* Step 3: 영상 합성 (Pending) */}
+              <div style={stepItemStyle}>
+                <div style={{
+                  ...stepCircleStyle,
+                  ...pendingStepCircleStyle
+                }}>
+                  <span style={stepIconStyle}>🎬</span>
+                </div>
+                <div style={stepLabelContainerStyle}>
+                  <div style={stepLabelStyle}>
+                    영상 합성
+                  </div>
+                  <div style={stepDescriptionStyle}>
+                    최종 영상을 합성합니다
+                  </div>
+                </div>
+              </div>
+              <div style={stepConnectorStyle} />
+
+              {/* Step 4: 품질 검수 (Pending) */}
+              <div style={stepItemStyle}>
+                <div style={{
+                  ...stepCircleStyle,
+                  ...pendingStepCircleStyle
+                }}>
+                  <span style={stepIconStyle}>✅</span>
+                </div>
+                <div style={stepLabelContainerStyle}>
+                  <div style={stepLabelStyle}>
+                    품질 검수
+                  </div>
+                  <div style={stepDescriptionStyle}>
+                    최종 품질을 검수합니다
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Content */}
+          <div style={contentContainerStyle}>
+            <div style={headerStyle}>
+              <div>
+                <h2 style={titleStyle}>📋 시나리오 작성</h2>
+                <p style={runIdStyle}>Run ID: {runId}</p>
+              </div>
+              <button onClick={onClose} style={closeButtonStyle}>✕</button>
+            </div>
+
+            <div style={contentScrollStyle}>
+              <div style={infoBoxStyle}>
+                <p><strong>모드:</strong> {plotData?.mode || 'general'}</p>
+                <p><strong>총 장면 수:</strong> {scenes.length}개</p>
+                <p style={{ marginTop: '10px', fontSize: '14px', color: '#6B7280' }}>
+                  각 장면을 클릭하여 수정할 수 있습니다. 수정 후 "확정" 버튼을 누르면 수정된 내용으로 영상이 생성됩니다.
+                </p>
+              </div>
+
+              {hasEdited && (
+                <p style={editedWarningStyle}>
+                  ⚠️ 플롯이 수정되었습니다. 확정 시 수정된 내용이 반영됩니다.
+                </p>
+              )}
+
+              <div style={scenesContainerStyle}>
+                {scenes.map((scene, index) => (
+                  <div key={scene.scene_id} style={sceneCardStyle}>
+                    <div style={sceneHeaderStyle}>
+                      <span style={sceneNumberStyle}>장면 {index + 1}</span>
+                      <button
+                        onClick={() => handleDeleteScene(scene.scene_id)}
+                        style={deleteButtonStyle}
+                        title="장면 삭제"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+
+                    <div style={sceneFieldStyle}>
+                      <label style={fieldLabelStyle}>🎬 장면 ID</label>
+                      <input
+                        type="text"
+                        value={scene.scene_id}
+                        onChange={(e) => handleSceneEdit(scene.scene_id, 'scene_id', e.target.value)}
+                        style={inputStyle}
+                      />
+                    </div>
+
+                    <div style={sceneFieldStyle}>
+                      <label style={fieldLabelStyle}>🖼️ 이미지 프롬프트</label>
+                      <textarea
+                        value={scene.image_prompt}
+                        onChange={(e) => handleSceneEdit(scene.scene_id, 'image_prompt', e.target.value)}
+                        style={textareaFieldStyle}
+                        rows={3}
+                      />
+                    </div>
+
+                    <div style={sceneFieldStyle}>
+                      <label style={fieldLabelStyle}>💬 대사/자막</label>
+                      <textarea
+                        value={scene.text}
+                        onChange={(e) => handleSceneEdit(scene.scene_id, 'text', e.target.value)}
+                        style={textareaFieldStyle}
+                        rows={2}
+                      />
+                    </div>
+
+                    <div style={sceneRowStyle}>
+                      <div style={{ ...sceneFieldStyle, flex: 1 }}>
+                        <label style={fieldLabelStyle}>🎤 화자</label>
+                        <input
+                          type="text"
+                          value={scene.speaker}
+                          onChange={(e) => handleSceneEdit(scene.scene_id, 'speaker', e.target.value)}
+                          style={inputStyle}
+                        />
+                      </div>
+
+                      <div style={{ ...sceneFieldStyle, flex: 1 }}>
+                        <label style={fieldLabelStyle}>⏱️ 길이 (ms)</label>
+                        <input
+                          type="number"
+                          value={scene.duration_ms}
+                          onChange={(e) => handleSceneEdit(scene.scene_id, 'duration_ms', parseInt(e.target.value, 10))}
+                          style={inputStyle}
+                          min={1000}
+                          step={500}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={footerStyle}>
+              <button
+                onClick={handleRegenerate}
+                disabled={isRegenerating || isConfirming}
+                style={{
+                  ...buttonStyle,
+                  ...rejectButtonStyle,
+                  ...(isRegenerating ? disabledButtonStyle : {})
+                }}
+              >
+                {isRegenerating ? '재생성 중...' : '거부 및 재생성'}
+              </button>
+              <button
+                onClick={handleConfirm}
+                disabled={isConfirming || isRegenerating}
+                style={{
+                  ...buttonStyle,
+                  ...approveButtonStyle,
+                  ...(isConfirming ? disabledButtonStyle : {})
+                }}
+              >
+                {isConfirming ? '처리 중...' : '승인 및 다음 단계'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -259,30 +341,137 @@ const overlayStyle: React.CSSProperties = {
   left: 0,
   right: 0,
   bottom: 0,
-  backgroundColor: 'rgba(0, 0, 0, 0.75)',
+  backgroundColor: 'rgba(0, 0, 0, 0.7)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  zIndex: 2000,
+  zIndex: 9999,
 }
 
 const modalStyle: React.CSSProperties = {
-  backgroundColor: 'white',
-  borderRadius: '12px',
-  width: '90%',
-  maxWidth: '900px',
+  backgroundColor: '#FFFFFF',
+  borderRadius: '16px',
+  maxWidth: '1200px',
+  width: '90vw',
   maxHeight: '90vh',
+  boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+  overflow: 'hidden',
+}
+
+const modalContentStyle: React.CSSProperties = {
+  display: 'flex',
+  height: '90vh',
+}
+
+const stepperContainerStyle: React.CSSProperties = {
+  width: '280px',
+  backgroundColor: '#F9FAFB',
+  borderRight: '1px solid #E5E7EB',
+  padding: '32px 24px',
+  overflowY: 'auto',
+}
+
+const stepperTitleStyle: React.CSSProperties = {
+  fontSize: '18px',
+  fontWeight: '700',
+  marginBottom: '24px',
+  color: '#111827',
+}
+
+const stepperListStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+  gap: '8px',
+}
+
+const stepItemStyle: React.CSSProperties = {
+  position: 'relative',
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '12px',
+  paddingBottom: '24px',
+}
+
+const stepCircleStyle: React.CSSProperties = {
+  width: '44px',
+  height: '44px',
+  borderRadius: '50%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+  backgroundColor: '#E5E7EB',
+  border: '2px solid #D1D5DB',
+}
+
+const activeStepCircleStyle: React.CSSProperties = {
+  backgroundColor: '#6f9fa0',
+  border: '2px solid #6f9fa0',
+  boxShadow: '0 0 0 4px rgba(111, 159, 160, 0.1)',
+}
+
+const completedStepCircleStyle: React.CSSProperties = {
+  backgroundColor: '#10B981',
+  border: '2px solid #10B981',
+}
+
+const pendingStepCircleStyle: React.CSSProperties = {
+  backgroundColor: '#F3F4F6',
+  border: '2px solid #E5E7EB',
+}
+
+const stepIconStyle: React.CSSProperties = {
+  fontSize: '20px',
+}
+
+const stepLabelContainerStyle: React.CSSProperties = {
+  flex: 1,
+  paddingTop: '4px',
+}
+
+const stepLabelStyle: React.CSSProperties = {
+  fontSize: '15px',
+  fontWeight: '600',
+  color: '#6B7280',
+  marginBottom: '4px',
+}
+
+const activeStepLabelStyle: React.CSSProperties = {
+  color: '#111827',
+  fontWeight: '700',
+}
+
+const stepDescriptionStyle: React.CSSProperties = {
+  fontSize: '13px',
+  color: '#9CA3AF',
+  lineHeight: '1.4',
+}
+
+const contentContainerStyle: React.CSSProperties = {
+  flex: 1,
+  display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden',
 }
 
 const headerStyle: React.CSSProperties = {
+  padding: '32px',
+  borderBottom: '1px solid #E5E7EB',
   display: 'flex',
   justifyContent: 'space-between',
-  alignItems: 'center',
-  padding: '20px 30px',
-  borderBottom: '1px solid #E5E7EB',
+  alignItems: 'flex-start',
+}
+
+const titleStyle: React.CSSProperties = {
+  fontSize: '24px',
+  fontWeight: '700',
+  marginBottom: '8px',
+  color: '#111827',
+}
+
+const runIdStyle: React.CSSProperties = {
+  fontSize: '14px',
+  color: '#6B7280',
 }
 
 const closeButtonStyle: React.CSSProperties = {
@@ -290,16 +479,15 @@ const closeButtonStyle: React.CSSProperties = {
   border: 'none',
   fontSize: '24px',
   cursor: 'pointer',
-  color: '#6B7280',
-  padding: '0',
-  width: '30px',
-  height: '30px',
+  color: '#9CA3AF',
+  padding: '4px 8px',
+  transition: 'color 0.2s',
 }
 
-const contentStyle: React.CSSProperties = {
-  padding: '20px 30px',
-  overflowY: 'auto',
+const contentScrollStyle: React.CSSProperties = {
   flex: 1,
+  overflowY: 'auto',
+  padding: '32px',
 }
 
 const infoBoxStyle: React.CSSProperties = {
@@ -398,20 +586,36 @@ const textareaFieldStyle: React.CSSProperties = {
 }
 
 const footerStyle: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  padding: '20px 30px',
+  padding: '24px 32px',
   borderTop: '1px solid #E5E7EB',
+  display: 'flex',
+  gap: '12px',
+  justifyContent: 'flex-end',
+  backgroundColor: '#F9FAFB',
 }
 
 const buttonStyle: React.CSSProperties = {
-  padding: '10px 20px',
+  padding: '12px 24px',
+  borderRadius: '8px',
   border: 'none',
-  borderRadius: '6px',
-  fontSize: '14px',
+  fontSize: '15px',
   fontWeight: '600',
-  color: 'white',
   cursor: 'pointer',
-  transition: 'opacity 0.2s',
+  transition: 'all 0.2s',
+}
+
+const rejectButtonStyle: React.CSSProperties = {
+  backgroundColor: '#FFFFFF',
+  color: '#DC2626',
+  border: '2px solid #DC2626',
+}
+
+const approveButtonStyle: React.CSSProperties = {
+  backgroundColor: '#6f9fa0',
+  color: '#FFFFFF',
+}
+
+const disabledButtonStyle: React.CSSProperties = {
+  opacity: 0.5,
+  cursor: 'not-allowed',
 }

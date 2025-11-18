@@ -1,10 +1,18 @@
 import { useState, useEffect } from 'react'
-import { enhancePrompt, PromptEnhancementResult } from '../api/client'
+import { enhancePrompt, createRun, PromptEnhancementResult, getPlotJson, confirmPlot, regeneratePlot, PlotJsonData, Character } from '../api/client'
 
 interface HeroChatProps {
   onSubmit: (prompt: string, mode: 'general' | 'story' | 'ad') => void
   onEnhancementReady?: (enhancement: PromptEnhancementResult, originalPrompt: string) => void
+  onRunCreated?: (runId: string, reviewMode: boolean) => void
   disabled?: boolean
+}
+
+interface Scene {
+  scene_id: string
+  image_prompt: string
+  text: string
+  speaker: string
 }
 
 const ROTATING_WORDS = ['Epic', 'Cool', 'Fire', 'Viral', 'Neat', 'Bold']
@@ -16,7 +24,7 @@ const PLACEHOLDERS = {
   ad: ['상품 페이지 링크를 입력하세요']
 }
 
-function HeroChat({ onSubmit, onEnhancementReady, disabled = false }: HeroChatProps) {
+function HeroChat({ onSubmit, onEnhancementReady, onRunCreated, disabled = false }: HeroChatProps) {
   const [prompt, setPrompt] = useState('')
   const [selectedMode, setSelectedMode] = useState<'general' | 'story' | 'ad'>('general')
   const [currentWordIndex, setCurrentWordIndex] = useState(0)
@@ -38,6 +46,25 @@ function HeroChat({ onSubmit, onEnhancementReady, disabled = false }: HeroChatPr
   const [editedMusicGenre, setEditedMusicGenre] = useState('')
   const [editedNarrativeTone, setEditedNarrativeTone] = useState('')
   const [editedPlotStructure, setEditedPlotStructure] = useState('')
+
+  // Plot review mode states
+  const [modalMode, setModalMode] = useState<'enhancement' | 'plot-review'>('enhancement')
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null)
+  const [plotData, setPlotData] = useState<PlotJsonData | null>(null)
+  const [scenes, setScenes] = useState<Scene[]>([])
+  const [characters, setCharacters] = useState<Character[]>([])
+  const [plotReviewTab, setPlotReviewTab] = useState<'characters' | 'scenes'>('characters')
+  const [isLoadingPlot, setIsLoadingPlot] = useState(false)
+  const [isConfirmingPlot, setIsConfirmingPlot] = useState(false)
+  const [isRegeneratingPlot, setIsRegeneratingPlot] = useState(false)
+  const [hasEditedPlot, setHasEditedPlot] = useState(false)
+  const [currentAnimFrame, setCurrentAnimFrame] = useState(1)
+
+  // Test mode states
+  const [showTestMode, setShowTestMode] = useState(false)
+  const [stubImageMode, setStubImageMode] = useState(false)
+  const [stubMusicMode, setStubMusicMode] = useState(false)
+  const [stubTTSMode, setStubTTSMode] = useState(false)
 
   // Rotating words animation
   useEffect(() => {
@@ -86,6 +113,29 @@ function HeroChat({ onSubmit, onEnhancementReady, disabled = false }: HeroChatPr
     setCurrentPlaceholderText(placeholders[randomIndex])
   }, [])
 
+  // Test mode toggle with Option/Alt + Shift + T
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey && e.shiftKey && e.key === 'T') {
+        e.preventDefault()
+        setShowTestMode(prev => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  // Animation for plot loading
+  useEffect(() => {
+    if (!isLoadingPlot) return
+
+    const interval = setInterval(() => {
+      setCurrentAnimFrame(prev => (prev % 9) + 1) // Loop from 1 to 9
+    }, 150) // Change frame every 150ms
+
+    return () => clearInterval(interval)
+  }, [isLoadingPlot])
+
   const handleModeChange = (mode: 'general' | 'story' | 'ad') => {
     const placeholders = PLACEHOLDERS[mode]
     const randomIndex = Math.floor(Math.random() * placeholders.length)
@@ -103,16 +153,34 @@ function HeroChat({ onSubmit, onEnhancementReady, disabled = false }: HeroChatPr
       setShowEnhancementModal(true)
       setIsEnhancing(true)
 
-      try {
-        const result = await enhancePrompt(prompt, 'general')
-        setEnhancementResult(result)
-      } catch (error: any) {
-        console.error('Failed to enhance prompt:', error)
-        setShowEnhancementModal(false)
-        alert(`프롬프트 풍부화 실패:\n${error?.message || String(error)}\n\n백엔드 서버가 실행 중인지 확인해주세요.`)
-      } finally {
-        setIsEnhancing(false)
+      let lastError: any = null
+      const maxRetries = 3 // 초기 1번 + 재시도 2번
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`[ENHANCE] Attempt ${attempt}/${maxRetries}...`)
+          const result = await enhancePrompt(prompt, 'general')
+          setEnhancementResult(result)
+          setIsEnhancing(false)
+          return // 성공하면 종료
+        } catch (error: any) {
+          console.error(`[ENHANCE] Attempt ${attempt} failed:`, error)
+          lastError = error
+
+          if (attempt < maxRetries) {
+            // 재시도 전 2초 대기
+            console.log(`[ENHANCE] Retrying in 2 seconds...`)
+            await new Promise(resolve => setTimeout(resolve, 2000))
+          }
+        }
       }
+
+      // 모든 시도 실패
+      setIsEnhancing(false)
+      setShowEnhancementModal(false)
+
+      const errorMessage = lastError?.message || String(lastError) || '알 수 없는 오류'
+      alert(`프롬프트 분석에 ${maxRetries}번 실패했습니다.\n\n에러: ${errorMessage}\n\nGemini API가 일시적으로 불안정할 수 있습니다.\n잠시 후 다시 시도하거나 다른 프롬프트를 입력해주세요.`)
     } else {
       // For story/ad modes, proceed directly
       onSubmit(prompt, selectedMode)
@@ -133,60 +201,190 @@ function HeroChat({ onSubmit, onEnhancementReady, disabled = false }: HeroChatPr
     }
   }, [enhancementResult])
 
-  const handleAutoGenerate = () => {
+  const handleAutoGenerate = async () => {
     if (!enhancementResult) return
 
-    // Create edited enhancement object
-    const editedEnhancement: PromptEnhancementResult = {
-      ...enhancementResult,
-      suggested_title: editedTitle,
-      suggested_plot_outline: editedPlot,
-      suggested_num_cuts: editedNumCuts,
-      suggested_num_characters: editedNumCharacters,
-      suggested_art_style: editedArtStyle,
-      suggested_music_genre: editedMusicGenre,
-      suggested_narrative_tone: editedNarrativeTone,
-      suggested_plot_structure: editedPlotStructure
-    }
+    try {
+      // Create run spec from enhancement result
+      const runSpec = {
+        mode: selectedMode,
+        prompt: editedPlot,
+        num_characters: editedNumCharacters as 1 | 2 | 3,
+        num_cuts: editedNumCuts,
+        art_style: editedArtStyle,
+        music_genre: editedMusicGenre,
+        video_title: editedTitle,
+        review_mode: false, // Auto-generate mode - no review
+        // Test mode flags
+        stub_image_mode: stubImageMode,
+        stub_music_mode: stubMusicMode,
+        stub_tts_mode: stubTTSMode,
+      }
 
-    // TODO: Directly trigger run creation with edited enhancement
-    // For now, pass to review mode (will implement direct generation later)
-    if (onEnhancementReady) {
-      onEnhancementReady(editedEnhancement, prompt)
-    }
+      // Create run directly
+      const result = await createRun(runSpec)
 
-    setShowEnhancementModal(false)
-    setEnhancementResult(null)
+      // Notify parent component
+      if (onRunCreated) {
+        onRunCreated(result.run_id, false)
+      }
+
+      setShowEnhancementModal(false)
+      setEnhancementResult(null)
+    } catch (error) {
+      console.error('Failed to create run:', error)
+      alert('영상 생성 시작 실패. 다시 시도해주세요.')
+    }
   }
 
-  const handleReviewMode = () => {
+  const handleReviewMode = async () => {
     if (!enhancementResult) return
 
-    // Create edited enhancement object
-    const editedEnhancement: PromptEnhancementResult = {
-      ...enhancementResult,
-      suggested_title: editedTitle,
-      suggested_plot_outline: editedPlot,
-      suggested_num_cuts: editedNumCuts,
-      suggested_num_characters: editedNumCharacters,
-      suggested_art_style: editedArtStyle,
-      suggested_music_genre: editedMusicGenre,
-      suggested_narrative_tone: editedNarrativeTone,
-      suggested_plot_structure: editedPlotStructure
+    try {
+      // Create run spec from enhancement result with review mode enabled
+      const runSpec = {
+        mode: selectedMode,
+        prompt: editedPlot,
+        num_characters: editedNumCharacters as 1 | 2 | 3,
+        num_cuts: editedNumCuts,
+        art_style: editedArtStyle,
+        music_genre: editedMusicGenre,
+        video_title: editedTitle,
+        review_mode: true, // Review mode - will show plot review modal
+        // Test mode flags
+        stub_image_mode: stubImageMode,
+        stub_music_mode: stubMusicMode,
+        stub_tts_mode: stubTTSMode,
+      }
+
+      // Create run directly
+      const result = await createRun(runSpec)
+      setCurrentRunId(result.run_id)
+
+      // Switch modal to plot review mode (KEEP MODAL OPEN)
+      setModalMode('plot-review')
+
+      // Start loading plot.json
+      await loadPlotJson(result.run_id)
+
+    } catch (error) {
+      console.error('Failed to create run:', error)
+      alert('영상 생성 시작 실패. 다시 시도해주세요.')
+    }
+  }
+
+  const loadPlotJson = async (runId: string) => {
+    setIsLoadingPlot(true)
+    let retries = 0
+    const maxRetries = 30 // 최대 30초 대기 (1초 간격)
+
+    while (retries < maxRetries) {
+      try {
+        const data = await getPlotJson(runId)
+        setPlotData(data)
+        setScenes(data.plot.scenes)
+        setCharacters(data.plot.characters || [])
+        setIsLoadingPlot(false)
+        console.log(`[${runId}] Plot JSON loaded successfully after ${retries} retries`)
+        console.log(`[${runId}] Loaded ${data.plot.characters?.length || 0} characters, ${data.plot.scenes.length} scenes`)
+        return // 성공하면 종료
+      } catch (error) {
+        retries++
+        if (retries >= maxRetries) {
+          console.error(`[${runId}] Failed to load plot JSON after ${maxRetries} retries:`, error)
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          alert(`플롯 JSON 로드 실패 (${maxRetries}초 대기 후): ${errorMessage}\n\n백엔드 로그를 확인해주세요.`)
+          setIsLoadingPlot(false)
+          return
+        }
+        // 1초 대기 후 재시도
+        console.log(`[${runId}] Plot JSON not ready yet, retrying (${retries}/${maxRetries})...`)
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+    }
+  }
+
+  const handleCharacterEdit = (charId: string, field: keyof Character, value: string) => {
+    setCharacters(prevChars =>
+      prevChars.map(char =>
+        char.char_id === charId ? { ...char, [field]: value } : char
+      )
+    )
+    setHasEditedPlot(true)
+  }
+
+  const handleSceneEdit = (sceneId: string, field: keyof Scene, value: string | number) => {
+    setScenes(prevScenes =>
+      prevScenes.map(scene =>
+        scene.scene_id === sceneId ? { ...scene, [field]: value } : scene
+      )
+    )
+    setHasEditedPlot(true)
+  }
+
+  const handleDeleteScene = (sceneId: string) => {
+    if (!confirm('이 장면을 삭제하시겠습니까?')) return
+    setScenes(prevScenes => prevScenes.filter(scene => scene.scene_id !== sceneId))
+    setHasEditedPlot(true)
+  }
+
+  const handleConfirmPlot = async () => {
+    if (!currentRunId) return
+    setIsConfirmingPlot(true)
+    try {
+      const editedPlotData = hasEditedPlot ? {
+        title: plotData?.plot.title,
+        bgm_prompt: plotData?.plot.bgm_prompt,
+        characters: characters,
+        scenes: scenes
+      } : undefined
+      await confirmPlot(currentRunId, editedPlotData)
+      alert('플롯이 확정되었습니다. 에셋 생성이 시작됩니다.')
+
+      // Notify parent and close modal
+      if (onRunCreated) {
+        onRunCreated(currentRunId, true)
+      }
+      handleCancelEnhancement()
+    } catch (error) {
+      console.error('Failed to confirm plot:', error)
+      alert('플롯 확정 실패: ' + error)
+    } finally {
+      setIsConfirmingPlot(false)
+    }
+  }
+
+  const handleRegeneratePlot = async () => {
+    if (!currentRunId) return
+    if (!confirm('플롯을 재생성하시겠습니까? 현재 플롯은 삭제됩니다.')) {
+      return
     }
 
-    // Pass to RunForm for further review/modification
-    if (onEnhancementReady) {
-      onEnhancementReady(editedEnhancement, prompt)
+    setIsRegeneratingPlot(true)
+    try {
+      await regeneratePlot(currentRunId)
+      alert('플롯 재생성이 시작되었습니다. 잠시 후 새로운 플롯이 표시됩니다.')
+      // Reload plot after regeneration
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      await loadPlotJson(currentRunId)
+    } catch (error) {
+      console.error('Failed to regenerate plot:', error)
+      alert('플롯 재생성 실패: ' + error)
+    } finally {
+      setIsRegeneratingPlot(false)
     }
-
-    setShowEnhancementModal(false)
-    setEnhancementResult(null)
   }
 
   const handleCancelEnhancement = () => {
     setShowEnhancementModal(false)
     setEnhancementResult(null)
+    setModalMode('enhancement')
+    setCurrentRunId(null)
+    setPlotData(null)
+    setScenes([])
+    setCharacters([])
+    setPlotReviewTab('characters')
+    setHasEditedPlot(false)
   }
 
   return (
@@ -203,7 +401,7 @@ function HeroChat({ onSubmit, onEnhancementReady, disabled = false }: HeroChatPr
             </span>
           </h1>
           <p className="hero-chat-subtitle">
-            텍스트 한 줄이면, 플롯·이미지·음악·보이스부터 숏폼영상까지 AI가 완성합니다
+            텍스트 한 줄이면, AI가 알아서 숏폼 영상을 완성합니다
           </p>
         </div>
 
@@ -222,6 +420,12 @@ function HeroChat({ onSubmit, onEnhancementReady, disabled = false }: HeroChatPr
                   const target = e.target as HTMLTextAreaElement
                   target.style.height = 'auto'
                   target.style.height = Math.min(target.scrollHeight, 200) + 'px'
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    handleSubmit(e as any)
+                  }
                 }}
               />
             </div>
@@ -280,55 +484,471 @@ function HeroChat({ onSubmit, onEnhancementReady, disabled = false }: HeroChatPr
             <div className="enhancement-modal-layout">
               {/* Left: Stepper */}
               <div className="enhancement-stepper">
-                <div className={`enhancement-step ${!isEnhancing ? 'completed' : 'active'}`}>
-                  <div className="enhancement-step-icon">
-                    {!isEnhancing ? (
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="#FFFFFF">
-                        <path d="M19.7071 6.29289C20.0976 6.68342 20.0976 7.31658 19.7071 7.70711L9.70711 17.7071C9.31658 18.0976 8.68342 18.0976 8.29289 17.7071L4.29289 13.7071C3.90237 13.3166 3.90237 12.6834 4.29289 12.2929C4.68342 11.9024 5.31658 11.9024 5.70711 12.2929L9 15.5858L18.2929 6.29289C18.6834 5.90237 19.3166 5.90237 19.7071 6.29289Z"/>
-                      </svg>
-                    ) : (
-                      <div className="enhancement-step-spinner"></div>
-                    )}
-                  </div>
-                  <div className="enhancement-step-content">
-                    <div className="enhancement-step-label">프롬프트 분석</div>
-                  </div>
-                </div>
+                {modalMode === 'enhancement' ? (
+                  // Enhancement mode: Show all steps with first step active/completed
+                  <>
+                    <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '24px', color: '#111827' }}>
+                      제작 단계
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {/* Step 0: 프롬프트 분석 (Active or Completed) */}
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '12px', paddingBottom: '24px' }}>
+                        <div className="enhancement-step-icon" style={enhancementResult ? {
+                          backgroundColor: '#7189a0', border: '2px solid #7189a0'
+                        } : {
+                          backgroundColor: '#6f9fa0', border: '2px solid #6f9fa0', boxShadow: '0 0 0 4px rgba(111, 159, 160, 0.1)'
+                        }}>
+                          {enhancementResult ? (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="#FFFFFF">
+                              <path d="M19.7071 6.29289C20.0976 6.68342 20.0976 7.31658 19.7071 7.70711L9.70711 17.7071C9.31658 18.0976 8.68342 18.0976 8.29289 17.7071L4.29289 13.7071C3.90237 13.3166 3.90237 12.6834 4.29289 12.2929C4.68342 11.9024 5.31658 11.9024 5.70711 12.2929L9 15.5858L18.2929 6.29289C18.6834 5.90237 19.3166 5.90237 19.7071 6.29289Z"/>
+                            </svg>
+                          ) : (
+                            <div className="enhancement-step-spinner"></div>
+                          )}
+                        </div>
+                        <div style={{ flex: 1, paddingTop: '4px' }}>
+                          <div style={{ fontSize: '15px', fontWeight: enhancementResult ? '600' : '700', color: enhancementResult ? '#6B7280' : '#111827', marginBottom: '4px' }}>
+                            프롬프트 분석
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#9CA3AF', lineHeight: '1.4' }}>
+                            {enhancementResult ? '완료됨' : 'AI가 프롬프트를 분석 중입니다'}
+                          </div>
+                        </div>
+                        <div style={{ position: 'absolute', left: '21px', top: '44px', bottom: '0', width: '2px', backgroundColor: enhancementResult ? '#7189a0' : '#E5E7EB' }} />
+                      </div>
 
-                <div className={`enhancement-step-connector ${!isEnhancing ? 'completed' : ''}`}></div>
+                      {/* Step 1: 시나리오 작성 (Pending) */}
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '12px', paddingBottom: '24px' }}>
+                        <div className="enhancement-step-icon" style={{ backgroundColor: '#F3F4F6', border: '2px solid #E5E7EB' }}>
+                        </div>
+                        <div style={{ flex: 1, paddingTop: '4px' }}>
+                          <div style={{ fontSize: '15px', fontWeight: '600', color: '#6B7280', marginBottom: '4px' }}>
+                            시나리오 작성
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#9CA3AF', lineHeight: '1.4' }}>
+                            플롯을 검토하고 수정합니다
+                          </div>
+                        </div>
+                        <div style={{ position: 'absolute', left: '21px', top: '44px', bottom: '0', width: '2px', backgroundColor: '#E5E7EB' }} />
+                      </div>
 
-                <div className={`enhancement-step ${enhancementResult ? 'completed' : isEnhancing ? 'active' : ''}`}>
-                  <div className="enhancement-step-icon">
-                    {enhancementResult ? (
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="#FFFFFF">
-                        <path d="M19.7071 6.29289C20.0976 6.68342 20.0976 7.31658 19.7071 7.70711L9.70711 17.7071C9.31658 18.0976 8.68342 18.0976 8.29289 17.7071L4.29289 13.7071C3.90237 13.3166 3.90237 12.6834 4.29289 12.2929C4.68342 11.9024 5.31658 11.9024 5.70711 12.2929L9 15.5858L18.2929 6.29289C18.6834 5.90237 19.3166 5.90237 19.7071 6.29289Z"/>
-                      </svg>
-                    ) : isEnhancing ? (
-                      <div className="enhancement-step-spinner"></div>
-                    ) : (
-                      <span className="enhancement-step-number">2</span>
-                    )}
-                  </div>
-                  <div className="enhancement-step-content">
-                    <div className="enhancement-step-label">영상 설정 생성</div>
-                  </div>
-                </div>
+                      {/* Step 2: 에셋 생성 (Pending) */}
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '12px', paddingBottom: '24px' }}>
+                        <div className="enhancement-step-icon" style={{ backgroundColor: '#F3F4F6', border: '2px solid #E5E7EB' }}>
+                        </div>
+                        <div style={{ flex: 1, paddingTop: '4px' }}>
+                          <div style={{ fontSize: '15px', fontWeight: '600', color: '#6B7280', marginBottom: '4px' }}>
+                            에셋 생성
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#9CA3AF', lineHeight: '1.4' }}>
+                            이미지, 음악, 음성을 생성합니다
+                          </div>
+                        </div>
+                        <div style={{ position: 'absolute', left: '21px', top: '44px', bottom: '0', width: '2px', backgroundColor: '#E5E7EB' }} />
+                      </div>
 
-                <div className={`enhancement-step-connector ${enhancementResult ? 'completed' : ''}`}></div>
+                      {/* Step 3: 영상 합성 (Pending) */}
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '12px', paddingBottom: '24px' }}>
+                        <div className="enhancement-step-icon" style={{ backgroundColor: '#F3F4F6', border: '2px solid #E5E7EB' }}>
+                        </div>
+                        <div style={{ flex: 1, paddingTop: '4px' }}>
+                          <div style={{ fontSize: '15px', fontWeight: '600', color: '#6B7280', marginBottom: '4px' }}>
+                            영상 합성
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#9CA3AF', lineHeight: '1.4' }}>
+                            최종 영상을 합성합니다
+                          </div>
+                        </div>
+                        <div style={{ position: 'absolute', left: '21px', top: '44px', bottom: '0', width: '2px', backgroundColor: '#E5E7EB' }} />
+                      </div>
 
-                <div className={`enhancement-step ${enhancementResult ? 'active' : ''}`}>
-                  <div className="enhancement-step-icon">
-                    <span className="enhancement-step-number">3</span>
-                  </div>
-                  <div className="enhancement-step-content">
-                    <div className="enhancement-step-label">결과 확인</div>
-                  </div>
-                </div>
+                      {/* Step 4: 품질 검수 (Pending) */}
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '12px', paddingBottom: '0px' }}>
+                        <div className="enhancement-step-icon" style={{ backgroundColor: '#F3F4F6', border: '2px solid #E5E7EB' }}>
+                        </div>
+                        <div style={{ flex: 1, paddingTop: '4px' }}>
+                          <div style={{ fontSize: '15px', fontWeight: '600', color: '#6B7280', marginBottom: '4px' }}>
+                            품질 검수
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#9CA3AF', lineHeight: '1.4' }}>
+                            최종 품질을 검수합니다
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  // Plot review mode: 4 steps
+                  <>
+                    <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '24px', color: '#111827' }}>
+                      검수 단계
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {/* Step 0: 프롬프트 분석 (Completed) */}
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '12px', paddingBottom: '24px' }}>
+                        <div className="enhancement-step-icon" style={{ backgroundColor: '#7189a0', border: '2px solid #7189a0' }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="#FFFFFF">
+                            <path d="M19.7071 6.29289C20.0976 6.68342 20.0976 7.31658 19.7071 7.70711L9.70711 17.7071C9.31658 18.0976 8.68342 18.0976 8.29289 17.7071L4.29289 13.7071C3.90237 13.3166 3.90237 12.6834 4.29289 12.2929C4.68342 11.9024 5.31658 11.9024 5.70711 12.2929L9 15.5858L18.2929 6.29289C18.6834 5.90237 19.3166 5.90237 19.7071 6.29289Z"/>
+                          </svg>
+                        </div>
+                        <div style={{ flex: 1, paddingTop: '4px' }}>
+                          <div style={{ fontSize: '15px', fontWeight: '600', color: '#6B7280', marginBottom: '4px' }}>
+                            프롬프트 분석
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#9CA3AF', lineHeight: '1.4' }}>
+                            완료됨
+                          </div>
+                        </div>
+                        <div style={{ position: 'absolute', left: '21px', top: '44px', bottom: '0', width: '2px', backgroundColor: '#7189a0' }} />
+                      </div>
+
+                      {/* Step 1: 시나리오 작성 (Active) */}
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '12px', paddingBottom: '24px' }}>
+                        <div className="enhancement-step-icon" style={{ backgroundColor: '#6f9fa0', border: '2px solid #6f9fa0', boxShadow: '0 0 0 4px rgba(111, 159, 160, 0.1)' }}>
+                          <div className="enhancement-step-spinner"></div>
+                        </div>
+                        <div style={{ flex: 1, paddingTop: '4px' }}>
+                          <div style={{ fontSize: '15px', fontWeight: '700', color: '#111827', marginBottom: '4px' }}>
+                            시나리오 작성
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#9CA3AF', lineHeight: '1.4' }}>
+                            플롯을 검토하고 수정합니다
+                          </div>
+                        </div>
+                        <div style={{ position: 'absolute', left: '21px', top: '44px', bottom: '0', width: '2px', backgroundColor: '#E5E7EB' }} />
+                      </div>
+
+                      {/* Step 2: 에셋 생성 (Pending) */}
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '12px', paddingBottom: '24px' }}>
+                        <div className="enhancement-step-icon" style={{ backgroundColor: '#F3F4F6', border: '2px solid #E5E7EB' }}>
+                        </div>
+                        <div style={{ flex: 1, paddingTop: '4px' }}>
+                          <div style={{ fontSize: '15px', fontWeight: '600', color: '#6B7280', marginBottom: '4px' }}>
+                            에셋 생성
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#9CA3AF', lineHeight: '1.4' }}>
+                            이미지, 음악, 음성을 생성합니다
+                          </div>
+                        </div>
+                        <div style={{ position: 'absolute', left: '21px', top: '44px', bottom: '0', width: '2px', backgroundColor: '#E5E7EB' }} />
+                      </div>
+
+                      {/* Step 3: 영상 합성 (Pending) */}
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '12px', paddingBottom: '24px' }}>
+                        <div className="enhancement-step-icon" style={{ backgroundColor: '#F3F4F6', border: '2px solid #E5E7EB' }}>
+                        </div>
+                        <div style={{ flex: 1, paddingTop: '4px' }}>
+                          <div style={{ fontSize: '15px', fontWeight: '600', color: '#6B7280', marginBottom: '4px' }}>
+                            영상 합성
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#9CA3AF', lineHeight: '1.4' }}>
+                            최종 영상을 합성합니다
+                          </div>
+                        </div>
+                        <div style={{ position: 'absolute', left: '21px', top: '44px', bottom: '0', width: '2px', backgroundColor: '#E5E7EB' }} />
+                      </div>
+
+                      {/* Step 4: 품질 검수 (Pending) */}
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '12px', paddingBottom: '0px' }}>
+                        <div className="enhancement-step-icon" style={{ backgroundColor: '#F3F4F6', border: '2px solid #E5E7EB' }}>
+                        </div>
+                        <div style={{ flex: 1, paddingTop: '4px' }}>
+                          <div style={{ fontSize: '15px', fontWeight: '600', color: '#6B7280', marginBottom: '4px' }}>
+                            품질 검수
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#9CA3AF', lineHeight: '1.4' }}>
+                            최종 품질을 검수합니다
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Right: Content */}
               <div className="enhancement-content">
-                {isEnhancing ? (
+                {modalMode === 'plot-review' ? (
+                  // Plot Review Mode
+                  <>
+                    {isLoadingPlot ? (
+                      <div className="enhancement-loading">
+                        <img
+                          src={`/animations/1_plot/plotanim_${String(currentAnimFrame).padStart(2, '0')}.png`}
+                          alt="Loading animation"
+                          style={{
+                            width: '200px',
+                            height: '200px',
+                            objectFit: 'contain',
+                            marginBottom: '24px'
+                          }}
+                        />
+                        <h3 className="loading-title">시나리오 작성 중...</h3>
+                        <p className="loading-subtitle">
+                          기획자가 플롯을 짜고 있습니다
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="enhancement-content-header">
+                          <h3 className="enhancement-modal-title">📋 시나리오 작성</h3>
+                        </div>
+
+                        {/* Tab Navigation */}
+                        <div style={{ display: 'flex', gap: '8px', borderBottom: '2px solid #E5E7EB', marginBottom: '20px' }}>
+                          <button
+                            onClick={() => setPlotReviewTab('characters')}
+                            style={{
+                              padding: '10px 20px', fontSize: '15px', fontWeight: '600',
+                              border: 'none', borderBottom: plotReviewTab === 'characters' ? '3px solid #6f9fa0' : '3px solid transparent',
+                              background: plotReviewTab === 'characters' ? '#F9FAFB' : 'transparent',
+                              color: plotReviewTab === 'characters' ? '#6f9fa0' : '#6B7280',
+                              cursor: 'pointer', transition: 'all 0.2s'
+                            }}
+                          >
+                            👥 인물 ({characters.length})
+                          </button>
+                          <button
+                            onClick={() => setPlotReviewTab('scenes')}
+                            style={{
+                              padding: '10px 20px', fontSize: '15px', fontWeight: '600',
+                              border: 'none', borderBottom: plotReviewTab === 'scenes' ? '3px solid #6f9fa0' : '3px solid transparent',
+                              background: plotReviewTab === 'scenes' ? '#F9FAFB' : 'transparent',
+                              color: plotReviewTab === 'scenes' ? '#6f9fa0' : '#6B7280',
+                              cursor: 'pointer', transition: 'all 0.2s'
+                            }}
+                          >
+                            🎬 장면 ({scenes.length})
+                          </button>
+                        </div>
+
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '0 0 20px 0' }}>
+                          {plotReviewTab === 'characters' ? (
+                            // Characters Tab
+                            <>
+                              <div style={{ backgroundColor: '#F3F4F6', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+                                <p><strong>모드:</strong> {plotData?.mode || 'general'}</p>
+                                <p><strong>총 인물 수:</strong> {characters.length}명</p>
+                                <p style={{ marginTop: '10px', fontSize: '14px', color: '#6B7280' }}>
+                                  인물의 외형 묘사를 수정하면 모든 장면의 이미지에 자동으로 반영됩니다.
+                                </p>
+                              </div>
+
+                              {hasEditedPlot && (
+                                <p style={{
+                                  marginTop: '0', marginBottom: '16px', padding: '12px', fontSize: '13px',
+                                  color: '#D97706', backgroundColor: '#FEF3C7', border: '1px solid #F59E0B',
+                                  borderRadius: '6px', fontWeight: '500'
+                                }}>
+                                  ⚠️ 플롯이 수정되었습니다. 확정 시 수정된 내용이 반영됩니다.
+                                </p>
+                              )}
+
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                {characters.map((char, index) => (
+                                  <div key={char.char_id} style={{
+                                    backgroundColor: '#FFFFFF', border: '2px solid #E5E7EB',
+                                    borderRadius: '8px', padding: '16px'
+                                  }}>
+                                    <div style={{
+                                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                      marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid #E5E7EB'
+                                    }}>
+                                      <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#1F2937' }}>
+                                        인물 {index + 1}: {char.name}
+                                      </span>
+                                    </div>
+
+                                    <div style={{ marginBottom: '12px' }}>
+                                      <label style={{
+                                        display: 'block', fontSize: '13px', fontWeight: '600',
+                                        color: '#4B5563', marginBottom: '6px'
+                                      }}>🆔 캐릭터 ID</label>
+                                      <input
+                                        type="text"
+                                        value={char.char_id}
+                                        disabled
+                                        style={{
+                                          width: '100%', padding: '8px 10px', fontSize: '14px',
+                                          border: '1px solid #D1D5DB', borderRadius: '4px',
+                                          backgroundColor: '#F9FAFB', color: '#6B7280'
+                                        }}
+                                      />
+                                    </div>
+
+                                    <div style={{ marginBottom: '12px' }}>
+                                      <label style={{
+                                        display: 'block', fontSize: '13px', fontWeight: '600',
+                                        color: '#4B5563', marginBottom: '6px'
+                                      }}>👤 이름</label>
+                                      <input
+                                        type="text"
+                                        value={char.name}
+                                        onChange={(e) => handleCharacterEdit(char.char_id, 'name', e.target.value)}
+                                        style={{
+                                          width: '100%', padding: '8px 10px', fontSize: '14px',
+                                          border: '1px solid #D1D5DB', borderRadius: '4px'
+                                        }}
+                                      />
+                                    </div>
+
+                                    <div style={{ marginBottom: '0' }}>
+                                      <label style={{
+                                        display: 'block', fontSize: '13px', fontWeight: '600',
+                                        color: '#4B5563', marginBottom: '6px'
+                                      }}>✨ 외형 묘사</label>
+                                      <textarea
+                                        value={char.description}
+                                        onChange={(e) => handleCharacterEdit(char.char_id, 'description', e.target.value)}
+                                        placeholder="예: 25세 여성, 긴 검은 머리, 밝은 눈동자, 흰색 티셔츠와 청바지 착용"
+                                        style={{
+                                          width: '100%', padding: '8px 10px', fontSize: '14px',
+                                          border: '1px solid #D1D5DB', borderRadius: '4px', resize: 'vertical'
+                                        }}
+                                        rows={4}
+                                      />
+                                      <p style={{ marginTop: '6px', fontSize: '12px', color: '#9CA3AF' }}>
+                                        💡 이 묘사는 장면의 {'{'}{char.char_id}{'}'} 변수를 대체합니다
+                                      </p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </>
+                          ) : (
+                            // Scenes Tab
+                            <>
+                              <div style={{ backgroundColor: '#F3F4F6', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+                                <p><strong>모드:</strong> {plotData?.mode || 'general'}</p>
+                                <p><strong>총 장면 수:</strong> {scenes.length}개</p>
+                                <p style={{ marginTop: '10px', fontSize: '14px', color: '#6B7280' }}>
+                                  각 장면을 클릭하여 수정할 수 있습니다. 수정 후 "확정" 버튼을 누르면 수정된 내용으로 영상이 생성됩니다.
+                                </p>
+                              </div>
+
+                              {hasEditedPlot && (
+                                <p style={{
+                                  marginTop: '0', marginBottom: '16px', padding: '12px', fontSize: '13px',
+                                  color: '#D97706', backgroundColor: '#FEF3C7', border: '1px solid #F59E0B',
+                                  borderRadius: '6px', fontWeight: '500'
+                                }}>
+                                  ⚠️ 플롯이 수정되었습니다. 확정 시 수정된 내용이 반영됩니다.
+                                </p>
+                              )}
+
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                {scenes.map((scene, index) => (
+                              <div key={scene.scene_id} style={{
+                                backgroundColor: '#FFFFFF', border: '2px solid #E5E7EB',
+                                borderRadius: '8px', padding: '16px'
+                              }}>
+                                <div style={{
+                                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                  marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid #E5E7EB'
+                                }}>
+                                  <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#1F2937' }}>
+                                    장면 {index + 1}
+                                  </span>
+                                  <button
+                                    onClick={() => handleDeleteScene(scene.scene_id)}
+                                    style={{
+                                      background: 'none', border: 'none', fontSize: '20px',
+                                      cursor: 'pointer', padding: '4px', opacity: 0.6
+                                    }}
+                                    title="장면 삭제"
+                                  >
+                                    🗑️
+                                  </button>
+                                </div>
+
+                                <div style={{ marginBottom: '12px' }}>
+                                  <label style={{
+                                    display: 'block', fontSize: '13px', fontWeight: '600',
+                                    color: '#4B5563', marginBottom: '6px'
+                                  }}>🖼️ 이미지 프롬프트</label>
+                                  <textarea
+                                    value={scene.image_prompt}
+                                    onChange={(e) => handleSceneEdit(scene.scene_id, 'image_prompt', e.target.value)}
+                                    placeholder="이미지 설명을 입력하세요. 비워두면 이전 장면의 이미지가 재사용됩니다."
+                                    style={{
+                                      width: '100%', padding: '8px 10px', fontSize: '14px',
+                                      border: '1px solid #D1D5DB', borderRadius: '4px', resize: 'vertical'
+                                    }}
+                                    rows={3}
+                                  />
+                                </div>
+
+                                <div style={{ marginBottom: '12px' }}>
+                                  <label style={{
+                                    display: 'block', fontSize: '13px', fontWeight: '600',
+                                    color: '#4B5563', marginBottom: '6px'
+                                  }}>💬 대사/자막</label>
+                                  <textarea
+                                    value={scene.text}
+                                    onChange={(e) => handleSceneEdit(scene.scene_id, 'text', e.target.value)}
+                                    style={{
+                                      width: '100%', padding: '8px 10px', fontSize: '14px',
+                                      border: '1px solid #D1D5DB', borderRadius: '4px', resize: 'vertical'
+                                    }}
+                                    rows={2}
+                                  />
+                                </div>
+
+                                <div style={{ marginBottom: '0' }}>
+                                  <label style={{
+                                    display: 'block', fontSize: '13px', fontWeight: '600',
+                                    color: '#4B5563', marginBottom: '6px'
+                                  }}>🎤 화자</label>
+                                  <input
+                                    type="text"
+                                    value={scene.speaker}
+                                    onChange={(e) => handleSceneEdit(scene.scene_id, 'speaker', e.target.value)}
+                                    style={{
+                                      width: '100%', padding: '8px 10px', fontSize: '14px',
+                                      border: '1px solid #D1D5DB', borderRadius: '4px'
+                                    }}
+                                  />
+                                  </div>
+                                </div>
+                              ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        <div className="enhancement-actions">
+                          <button onClick={handleCancelEnhancement} className="enhancement-btn-cancel">
+                            취소
+                          </button>
+                          <button
+                            onClick={handleRegeneratePlot}
+                            disabled={isRegeneratingPlot || isConfirmingPlot}
+                            style={{
+                              padding: '12px 24px', borderRadius: '8px', fontSize: '15px', fontWeight: '600',
+                              cursor: isRegeneratingPlot || isConfirmingPlot ? 'not-allowed' : 'pointer',
+                              backgroundColor: '#FFFFFF', color: '#DC2626', border: '2px solid #DC2626',
+                              opacity: isRegeneratingPlot || isConfirmingPlot ? 0.5 : 1
+                            }}
+                          >
+                            {isRegeneratingPlot ? '재생성 중...' : '거부 및 재생성'}
+                          </button>
+                          <button
+                            onClick={handleConfirmPlot}
+                            disabled={isConfirmingPlot || isRegeneratingPlot}
+                            style={{
+                              padding: '12px 24px', borderRadius: '8px', fontSize: '15px', fontWeight: '600',
+                              cursor: isConfirmingPlot || isRegeneratingPlot ? 'not-allowed' : 'pointer',
+                              backgroundColor: '#6f9fa0', color: '#FFFFFF', border: 'none',
+                              opacity: isConfirmingPlot || isRegeneratingPlot ? 0.5 : 1
+                            }}
+                          >
+                            {isConfirmingPlot ? '처리 중...' : '승인 및 다음 단계'}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </>
+                ) : isEnhancing ? (
                   // Loading state
                   <div className="enhancement-loading">
                     <div className="loading-spinner">⚙️</div>
@@ -341,7 +961,6 @@ function HeroChat({ onSubmit, onEnhancementReady, disabled = false }: HeroChatPr
                   // Content state
                   <>
                     <div className="enhancement-content-header">
-                      <p className="enhancement-step-caption">Step 3</p>
                       <h3 className="enhancement-modal-title">✨ AI 풍부화 결과</h3>
                     </div>
 
@@ -449,12 +1068,49 @@ function HeroChat({ onSubmit, onEnhancementReady, disabled = false }: HeroChatPr
                       </div>
                     </div>
 
-                    <div className="enhancement-reasoning">
-                      <div className="enhancement-reasoning-label">💡 제안 이유</div>
-                      <div className="enhancement-reasoning-value">
-                        {enhancementResult.reasoning}
+                    {/* Test Mode Section */}
+                    {showTestMode && (
+                      <div style={{
+                        padding: '16px 18px',
+                        backgroundColor: '#FFF3CD',
+                        border: '1px solid #FFC107',
+                        borderRadius: '10px',
+                        marginBottom: '24px'
+                      }}>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#856404', marginBottom: '12px' }}>
+                          🧪 테스트 모드 (Option/Alt + Shift + T)
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={stubImageMode}
+                              onChange={(e) => setStubImageMode(e.target.checked)}
+                              style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '13px', color: '#856404' }}>이미지 생성 스킵 (Stub Image Mode)</span>
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={stubMusicMode}
+                              onChange={(e) => setStubMusicMode(e.target.checked)}
+                              style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '13px', color: '#856404' }}>음악 생성 스킵 (Stub Music Mode)</span>
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={stubTTSMode}
+                              onChange={(e) => setStubTTSMode(e.target.checked)}
+                              style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '13px', color: '#856404' }}>음성 합성 스킵 (Stub TTS Mode)</span>
+                          </label>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     <div className="enhancement-actions">
                       <button onClick={handleCancelEnhancement} className="enhancement-btn-cancel">

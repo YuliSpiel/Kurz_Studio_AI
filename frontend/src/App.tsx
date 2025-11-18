@@ -21,9 +21,13 @@ function App() {
     originalPrompt: string
   } | null>(null)
 
-  const handleRunCreated = (runId: string) => {
+  // Review mode flag
+  const [isReviewMode, setIsReviewMode] = useState(false)
+
+  const handleRunCreated = (runId: string, reviewMode: boolean = false) => {
     setCurrentRunId(runId)
     setCompletedRun(null)
+    setIsReviewMode(reviewMode)
   }
 
   const handleRunCompleted = (runData: any) => {
@@ -36,6 +40,7 @@ function App() {
     setCompletedRun(null)
     setShowDetailedForm(false)
     setEnhancementData(null)
+    setIsReviewMode(false)
   }
 
   const handleEditorMode = () => {
@@ -44,10 +49,9 @@ function App() {
     setEnhancementData(null)
   }
 
-  const handleHeroChatSubmit = (prompt: string, mode: 'general' | 'story' | 'ad') => {
+  const handleHeroChatSubmit = (_prompt: string, mode: 'general' | 'story' | 'ad') => {
     setAppMode(mode)
     setShowDetailedForm(true)
-    // TODO: 간단한 프롬프트로 바로 실행하거나, 상세 폼으로 이동
   }
 
   const handleEnhancementReady = (enhancement: PromptEnhancementResult, originalPrompt: string) => {
@@ -98,9 +102,12 @@ function App() {
       <nav className="navbar">
         <div className="navbar-content">
           <div className="navbar-left">
-            <div className="navbar-logo" onClick={handleReset} style={{ cursor: 'pointer' }}>
-              <h1>KURZ AI</h1>
-              <p>가장 쉬운 숏폼 제작 플랫폼</p>
+            <div className="navbar-logo" onClick={handleReset} style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.002px' }}>
+                <img src="/logo/kurz_logo.png" alt="Kurz Logo" style={{ height: '2.7rem', width: 'auto' }} />
+                <h1>KURZ AI</h1>
+              </div>
+              <p style={{ textAlign: 'center', marginLeft: '5px' }}>가장 쉬운 숏폼 제작 플랫폼</p>
             </div>
             <div className="navbar-menu">
               <a href="#" onClick={(e) => { e.preventDefault(); handleEditorMode(); }} className="navbar-menu-item">에디터 모드</a>
@@ -120,6 +127,7 @@ function App() {
           <HeroChat
             onSubmit={handleHeroChatSubmit}
             onEnhancementReady={handleEnhancementReady}
+            onRunCreated={handleRunCreated}
             disabled={!!currentRunId || !!completedRun}
           />
         )}
@@ -137,6 +145,7 @@ function App() {
               <RunStatus
                 runId={currentRunId}
                 onCompleted={handleRunCompleted}
+                reviewMode={isReviewMode}
               />
             )}
 

@@ -486,17 +486,17 @@ JSON 예시 (캐릭터 이미지 재사용 패턴에 주목):
 등장인물:
 {char_list}
 
-캐릭터 외형 (이미지 일관성 유지를 위해 **반드시 이 외형 그대로 사용**):
+캐릭터 외형 (이미지 일관성 유지용 - 아래 변수로 참조할 것):
 {char_appearance_details}
 
 각 장면마다 다음 정보를 JSON 형식으로 제공하세요:
 - scene_id: scene_1, scene_2, ... 형식
 - image_prompt: 이미지 생성 프롬프트
-  - **캐릭터가 등장하는 장면**: 위의 "캐릭터 외형"을 **정확히 그대로** 포함 + 동작/표정 + 배경 추가
-  - **예시**: "{characters_data['characters'][0].get('appearance', '')} + 웃으며 손을 흔들고 있는 모습 + 밝은 아침 햇살이 비치는 작은 마을 배경"
+  - **캐릭터가 등장하는 장면**: **반드시 캐릭터 변수 {{char_1}}, {{char_2}} 등을 사용**하세요
+  - **예시**: "{{char_1}} + 웃으며 손을 흔들고 있는 모습 + 밝은 아침 햇살이 비치는 작은 마을 배경"
   - ⚠️ **중요**: 한 이미지 위에 여러 대사를 띄우고 싶다면, image_prompt를 빈 문자열 ""로 설정하세요
   - 새로운 이미지가 필요한 경우에만 image_prompt를 작성하세요
-  - 해설만 있는 장면은 배경 묘사만 작성
+  - 해설만 있는 장면은 배경 묘사만 작성 (변수 사용 안함)
 - text: 대사 또는 해설 내용
   - **⚠️ 중요: 공백 포함 최대 28자 이내로 작성** (자막 표시를 위해 짧게!)
   - 긴 대사는 여러 장면으로 나누어 작성 (같은 이미지 재사용 가능)
@@ -515,13 +515,15 @@ JSON 예시 (캐릭터 이미지 재사용 패턴에 주목):
 
 **중요 규칙**:
 1. **캐릭터 일관성**:
-   ⚠️ 캐릭터가 재등장할 때마다 **반드시 위에 제시된 "캐릭터 외형"을 정확히 그대로 사용**하세요!
-   - 같은 캐릭터는 항상 같은 외형 프롬프트로 시작
-   - 동작/표정/배경만 변경하여 추가
-   - 외형 프롬프트를 임의로 변경하거나 생략하지 마세요
+   ⚠️ 캐릭터가 등장하는 장면에서는 **반드시 변수 {{char_1}}, {{char_2}} 등을 사용**하세요!
+   - ❌ 잘못된 예: "28세 여성, 긴 검은 머리... + 웃으며 손을 흔드는 모습"
+   - ✅ 올바른 예: "{{char_1}} + 웃으며 손을 흔드는 모습 + 밝은 배경"
+   - 변수 뒤에 "+ 동작/표정 + 배경" 형식으로 작성
+   - **절대로 캐릭터 외형 설명을 직접 작성하지 마세요 - 변수만 사용!**
 
 2. **이미지 프롬프트**:
-   - 자연스럽고 상세하게 작성 (캐릭터 외형 + 동작 + 배경)
+   - 캐릭터 장면: "{{변수}} + 동작/표정 + 배경" 형식으로 작성
+   - 배경 장면 (캐릭터 없음): 배경 묘사만 작성
    - 이미지는 1:1 비율로 생성되며 화면 중앙에 배치됨
 
 3. **텍스트 형식**:
@@ -540,7 +542,7 @@ JSON 형식 (예시: 3개 컷을 요청받은 경우):
   "scenes": [
     {{
       "scene_id": "scene_1",
-      "image_prompt": "귀여운 고양이가 신나게 웃으며 손을 흔들고 있는 모습, 밝은 아침 햇살이 비치는 작은 마을 배경",
+      "image_prompt": "{{char_1}} + 신나게 웃으며 손을 흔들고 있는 모습 + 밝은 아침 햇살이 비치는 작은 마을 배경",
       "text": "\\"안녕! 나는 용감한 고양이야!\\"",
       "speaker": "char_1",
       "duration_ms": 5000
@@ -554,14 +556,14 @@ JSON 형식 (예시: 3개 컷을 요청받은 경우):
     }},
     {{
       "scene_id": "scene_3",
-      "image_prompt": "고양이가 배낭을 메고 숲 속 오솔길을 걷고 있는 모습, 햇살이 나뭇잎 사이로 비치는 신비로운 숲 배경",
+      "image_prompt": "{{char_1}} + 배낭을 메고 숲 속 오솔길을 걷고 있는 모습 + 햇살이 나뭇잎 사이로 비치는 신비로운 숲 배경",
       "text": "그는 새로운 모험을 시작했다.",
       "speaker": "narration",
       "duration_ms": 5000
     }},
     {{
       "scene_id": "scene_4",
-      "image_prompt": "고양이가 산 정상에서 팔을 벌리고 환호하는 모습, 푸른 하늘과 구름이 펼쳐진 배경",
+      "image_prompt": "{{char_1}} + 산 정상에서 팔을 벌리고 환호하는 모습 + 푸른 하늘과 구름이 펼쳐진 배경",
       "text": "\\"드디어 해냈어!\\"",
       "speaker": "char_1",
       "duration_ms": 4500
@@ -628,6 +630,19 @@ JSON 형식 (예시: 3개 컷을 요청받은 경우):
                     scene["text"], scene["speaker"] = scene["speaker"], scene["text"]
 
             logger.info("[VALIDATION] Field validation complete")
+
+        # Add characters to plot.json for template substitution
+        if mode in ["general", "ad"]:
+            plot_data["characters"] = [
+                {
+                    "char_id": c["char_id"],
+                    "name": c["name"],
+                    "description": c.get("appearance", "")
+                }
+                for c in characters_data.get("characters", [])
+                if c.get("appearance")  # Exclude narration
+            ]
+            logger.info(f"[TEMPLATE] Added {len(plot_data.get('characters', []))} characters to plot.json for variable substitution")
 
         with open(plot_path, "w", encoding="utf-8") as f:
             json.dump(plot_data, f, indent=2, ensure_ascii=False)
