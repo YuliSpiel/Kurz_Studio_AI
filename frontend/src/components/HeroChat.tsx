@@ -151,6 +151,12 @@ function HeroChat({ onSubmit, onEnhancementReady, onRunCreated, disabled = false
 
     // For general mode, trigger AI enhancement
     if (selectedMode === 'general') {
+      // Prevent duplicate calls while already enhancing
+      if (isEnhancing) {
+        console.log('[ENHANCE] Already enhancing, ignoring duplicate call')
+        return
+      }
+
       // Show modal immediately with loading state
       setShowEnhancementModal(true)
       setIsEnhancing(true)
@@ -212,6 +218,8 @@ function HeroChat({ onSubmit, onEnhancementReady, onRunCreated, disabled = false
         num_cuts: editedNumCuts,
         art_style: editedArtStyle,
         music_genre: editedMusicGenre,
+        narrative_tone: editedNarrativeTone,
+        plot_structure: editedPlotStructure,
         video_title: editedTitle,
         review_mode: false, // Auto-generate mode - no review
         // Test mode flags
@@ -248,6 +256,8 @@ function HeroChat({ onSubmit, onEnhancementReady, onRunCreated, disabled = false
         num_cuts: editedNumCuts,
         art_style: editedArtStyle,
         music_genre: editedMusicGenre,
+        narrative_tone: editedNarrativeTone,
+        plot_structure: editedPlotStructure,
         video_title: editedTitle,
         review_mode: true, // Review mode - will show plot review modal
         // Test mode flags
@@ -422,7 +432,12 @@ function HeroChat({ onSubmit, onEnhancementReady, onRunCreated, disabled = false
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
-                    handleSubmit(e as any)
+                    // Don't call handleSubmit directly - let the form submit event handle it
+                    // This prevents duplicate submissions
+                    const form = e.currentTarget.form
+                    if (form) {
+                      form.requestSubmit()
+                    }
                   }
                 }}
               />
@@ -960,6 +975,23 @@ function HeroChat({ onSubmit, onEnhancementReady, onRunCreated, disabled = false
                   <>
                     <div className="enhancement-content-header">
                       <h3 className="enhancement-modal-title">✨ AI 풍부화 결과</h3>
+                    </div>
+
+                    <div className="enhancement-section">
+                      <label className="enhancement-label">💬 입력한 내용</label>
+                      <div style={{
+                        padding: '12px 16px',
+                        backgroundColor: '#F9FAFB',
+                        border: '1px solid #E5E7EB',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        color: '#6B7280',
+                        lineHeight: '1.6',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word'
+                      }}>
+                        {prompt}
+                      </div>
                     </div>
 
                     <div className="enhancement-section">

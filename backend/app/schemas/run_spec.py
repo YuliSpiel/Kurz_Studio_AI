@@ -50,6 +50,16 @@ class RunSpec(BaseModel):
         description="음악 장르 (예: ambient, cinematic, upbeat)"
     )
 
+    narrative_tone: Optional[str] = Field(
+        default=None,
+        description="서술 말투 (예: 격식형, 서술형, 친근한반말, 진지한나레이션, 감정강조, 코믹풍자)"
+    )
+
+    plot_structure: Optional[str] = Field(
+        default=None,
+        description="플롯 구조 (예: 기승전결, 고구마사이다, 3막구조, 비교형, 반전형, 정보나열, 감정곡선, 질문형, 루프형)"
+    )
+
     video_title: Optional[str] = Field(
         default=None,
         description="사용자 지정 영상 제목"

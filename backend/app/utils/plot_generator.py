@@ -21,7 +21,9 @@ def generate_plot_with_characters(
     num_characters: int,
     num_cuts: int,
     mode: str = "story",
-    characters: list = None
+    characters: list = None,
+    narrative_tone: str = None,
+    plot_structure: str = None
 ) -> Tuple[Path, Path]:
     """
     Generate characters.json and plot.json from user prompt using Gemini 2.5 Flash.
@@ -33,6 +35,8 @@ def generate_plot_with_characters(
         num_cuts: Number of scenes/cuts
         mode: story or ad
         characters: Optional list of user-provided character data (Story Mode)
+        narrative_tone: Narrative tone/style (e.g., 격식형, 친근한반말, 진지한나레이션)
+        plot_structure: Plot structure (e.g., 기승전결, 고구마사이다, 3막구조)
 
     Returns:
         Tuple of (characters_json_path, plot_json_path)
@@ -294,13 +298,25 @@ JSON 형식:
                     char_details += f"  역할: {c['role']}\n"
                 char_details += "\n"
 
+        # Build style instructions
+        style_instructions = ""
+        if narrative_tone:
+            logger.info(f"Applying narrative tone: {narrative_tone}")
+            style_instructions += f"\n\n**말투/톤**: {narrative_tone}\n"
+            style_instructions += "- 대사와 해설의 말투/어조를 반드시 이 톤에 맞춰 작성하세요.\n"
+
+        if plot_structure:
+            logger.info(f"Applying plot structure: {plot_structure}")
+            style_instructions += f"\n**플롯 구조**: {plot_structure}\n"
+            style_instructions += "- 시나리오를 반드시 이 플롯 구조에 맞춰 전개하세요.\n"
+
         # Use new schema for Story Mode
         logger.info(f"[DEBUG] Preparing plot generation: mode='{mode}', characters={'provided' if characters else 'None'}, num_cuts={num_cuts}")
         if mode == "story":
             logger.info("[DEBUG] ✅ Using STORY MODE prompt (char1_id/char2_id/speaker/background_img schema)")
             plot_prompt = f"""당신은 비주얼노벨 스타일 숏폼 영상 시나리오 작가입니다.
 사용자의 스토리를 {num_cuts}개 장면으로 나누어 시나리오를 만들어주세요.
-
+{style_instructions}
 등장인물:
 {char_list}{char_details}
 
@@ -482,7 +498,7 @@ JSON 예시 (캐릭터 이미지 재사용 패턴에 주목):
 
             plot_prompt = f"""당신은 숏폼 영상 콘텐츠 시나리오 작가입니다.
 사용자의 요청을 **정확히 {num_cuts}개의 이미지(컷)**로 나누어 {'광고' if mode == 'ad' else '영상'}를 만들어주세요.
-
+{style_instructions}
 등장인물:
 {char_list}
 

@@ -385,38 +385,12 @@ async def enhance_prompt_endpoint(request: dict):
         return result
     except ValueError as e:
         logger.error(f"[ENHANCE] Validation error: {e}")
-
-        # Return fallback response instead of failing completely
-        logger.warning(f"[ENHANCE] Returning fallback response due to error")
-        return {
-            "enhanced_prompt": original_prompt,
-            "suggested_title": original_prompt[:30] if len(original_prompt) > 30 else original_prompt,
-            "suggested_plot_outline": f"{original_prompt}에 대한 간단한 영상을 만듭니다.",
-            "suggested_num_cuts": 3,
-            "suggested_art_style": "일러스트",
-            "suggested_music_genre": "밝고 경쾌한 음악",
-            "suggested_num_characters": 1,
-            "suggested_narrative_tone": "친근한반말",
-            "suggested_plot_structure": "기승전결",
-            "reasoning": f"AI 분석 실패로 기본값 사용: {str(e)}"
-        }
+        # Raise HTTP 500 error so frontend shows error modal
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         logger.error(f"[ENHANCE] Failed to enhance prompt: {e}", exc_info=True)
-
-        # Return fallback response instead of 500 error
-        logger.warning(f"[ENHANCE] Returning fallback response due to unexpected error")
-        return {
-            "enhanced_prompt": original_prompt,
-            "suggested_title": original_prompt[:30] if len(original_prompt) > 30 else original_prompt,
-            "suggested_plot_outline": f"{original_prompt}에 대한 간단한 영상을 만듭니다.",
-            "suggested_num_cuts": 3,
-            "suggested_art_style": "일러스트",
-            "suggested_music_genre": "밝고 경쾌한 음악",
-            "suggested_num_characters": 1,
-            "suggested_narrative_tone": "친근한반말",
-            "suggested_plot_structure": "기승전결",
-            "reasoning": f"시스템 오류로 기본값 사용: {str(e)[:100]}"
-        }
+        # Raise HTTP 500 error so frontend shows error modal
+        raise HTTPException(status_code=500, detail=f"프롬프트 분석 중 오류 발생: {str(e)}")
 
 
 @app.get("/api/v1/runs/{run_id}/plot-json")
@@ -719,8 +693,8 @@ async def get_layout_config(run_id: str):
                 "title_bg_color": "#323296",
                 "title_font_size": 100,
                 "subtitle_font_size": 80,
-                "title_font": "AppleGothic",
-                "subtitle_font": "AppleGothic"
+                "title_font": "Paperlogy-7Bold",
+                "subtitle_font": "Paperlogy-4Regular"
             },
             "title": "Project Title"
         }
@@ -756,8 +730,8 @@ async def get_layout_config(run_id: str):
                 "title_bg_color": "#323296",
                 "title_font_size": 100,
                 "subtitle_font_size": 80,
-                "title_font": "AppleGothic",
-                "subtitle_font": "AppleGothic"
+                "title_font": "Paperlogy-7Bold",
+                "subtitle_font": "Paperlogy-4Regular"
             }
 
         logger.info(f"[{run_id}] Successfully loaded layout config")
@@ -776,7 +750,7 @@ async def get_layout_config(run_id: str):
 async def confirm_layout(run_id: str, request: Dict = Body(default={})):
     """
     Confirm layout and proceed to video rendering.
-    Optionally accepts updated layout_config.
+    Optionally accepts updated layout_config and title.
 
     Request Body (optional):
         {
@@ -785,9 +759,10 @@ async def confirm_layout(run_id: str, request: Dict = Body(default={})):
                 "title_bg_color": "#323296",
                 "title_font_size": 100,
                 "subtitle_font_size": 80,
-                "title_font": "AppleGothic",
-                "subtitle_font": "AppleGothic"
-            }
+                "title_font": "Paperlogy-7Bold",
+                "subtitle_font": "Paperlogy-4Regular"
+            },
+            "title": "Updated video title"
         }
 
     Response:
@@ -835,24 +810,29 @@ async def confirm_layout(run_id: str, request: Dict = Body(default={})):
         if not Path(layout_json_path).exists():
             raise HTTPException(status_code=404, detail=f"Layout JSON not found for run {run_id}")
 
-        # If user updated layout_config, save it to layout.json
-        if request and "layout_config" in request:
-            updated_config = request["layout_config"]
-
+        # If user updated layout_config or title, save it to layout.json
+        if request and ("layout_config" in request or "title" in request):
             # Load current layout.json
             with open(layout_json_path, 'r', encoding='utf-8') as f:
                 layout_data = json.load(f)
 
-            # Update layout_config in metadata
-            if "metadata" not in layout_data:
-                layout_data["metadata"] = {}
-            layout_data["metadata"]["layout_config"] = updated_config
+            # Update layout_config in metadata if provided
+            if "layout_config" in request:
+                updated_config = request["layout_config"]
+                if "metadata" not in layout_data:
+                    layout_data["metadata"] = {}
+                layout_data["metadata"]["layout_config"] = updated_config
+                logger.info(f"[{run_id}] Updated layout_config in layout.json: {updated_config}")
+
+            # Update title if provided
+            if "title" in request:
+                updated_title = request["title"]
+                layout_data["title"] = updated_title
+                logger.info(f"[{run_id}] Updated title in layout.json: {updated_title}")
 
             # Save updated layout.json
             with open(layout_json_path, 'w', encoding='utf-8') as f:
                 json.dump(layout_data, f, indent=2, ensure_ascii=False)
-
-            logger.info(f"[{run_id}] Updated layout_config in layout.json: {updated_config}")
 
         # Transition to RENDERING
         publish_progress(run_id, progress=0.65, log="레이아웃 확정 - 영상 합성 시작...")

@@ -81,7 +81,7 @@ export default function LayoutReviewModal({ runId, onClose }: LayoutReviewModalP
 
     setIsConfirming(true)
     try {
-      await confirmLayoutWithConfig(runId, config)
+      await confirmLayoutWithConfig(runId, config, title)
       onClose()
     } catch (err: any) {
       console.error('Failed to confirm layout:', err)
@@ -247,8 +247,33 @@ export default function LayoutReviewModal({ runId, onClose }: LayoutReviewModalP
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '0 32px 32px 32px' }}>
               <div style={infoBoxStyle}>
-                <p><strong>영상 제목:</strong> {title || '(제목 없음)'}</p>
-                <p style={{ marginTop: '10px', fontSize: '14px', color: '#6B7280' }}>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
+                    📝 영상 제목
+                  </label>
+                  <textarea
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="영상 제목을 입력하세요 (줄바꿈 가능)"
+                    rows={2}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      fontSize: '15px',
+                      border: '2px solid #D1D5DB',
+                      borderRadius: '6px',
+                      backgroundColor: '#FFFFFF',
+                      transition: 'border-color 0.2s',
+                      outline: 'none',
+                      resize: 'vertical',
+                      fontFamily: 'inherit',
+                      lineHeight: '1.5'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#6f9fa0'}
+                    onBlur={(e) => e.target.style.borderColor = '#D1D5DB'}
+                  />
+                </div>
+                <p style={{ fontSize: '14px', color: '#6B7280' }}>
                   영상 렌더링 시 사용될 제목 블록과 자막 스타일을 설정합니다. 설정 후 "승인" 버튼을 누르면 영상 합성이 시작됩니다.
                 </p>
               </div>
@@ -382,12 +407,12 @@ export default function LayoutReviewModal({ runId, onClose }: LayoutReviewModalP
                         type="range"
                         value={config.title_font_size}
                         onChange={(e) => updateConfig('title_font_size', parseInt(e.target.value))}
-                        min={20}
-                        max={200}
+                        min={80}
+                        max={120}
                         style={sliderStyle}
                       />
                       <p style={fieldHintStyle}>
-                        20 ~ 200 사이 값 (추천: 80 ~ 120)
+                        추천 범위: 80 ~ 120
                       </p>
                     </div>
 
@@ -419,12 +444,12 @@ export default function LayoutReviewModal({ runId, onClose }: LayoutReviewModalP
                     type="range"
                     value={config.subtitle_font_size}
                     onChange={(e) => updateConfig('subtitle_font_size', parseInt(e.target.value))}
-                    min={20}
-                    max={200}
+                    min={60}
+                    max={100}
                     style={sliderStyle}
                   />
                   <p style={fieldHintStyle}>
-                    20 ~ 200 사이 값 (추천: 60 ~ 100)
+                    추천 범위: 60 ~ 100
                   </p>
                 </div>
 

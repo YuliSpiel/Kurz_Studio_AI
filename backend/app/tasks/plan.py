@@ -232,7 +232,9 @@ def plan_task(self, run_id: str, spec: dict):
             num_characters=spec["num_characters"],
             num_cuts=spec["num_cuts"],
             mode=spec["mode"],
-            characters=spec.get("characters")  # Pass user-provided characters (Story Mode)
+            characters=spec.get("characters"),  # Pass user-provided characters (Story Mode)
+            narrative_tone=spec.get("narrative_tone"),  # Pass narrative tone
+            plot_structure=spec.get("plot_structure")  # Pass plot structure
         )
         logger.info(f"[{run_id}] Characters generated: {characters_path}")
         logger.info(f"[{run_id}] Plot JSON generated: {plot_json_path}")
