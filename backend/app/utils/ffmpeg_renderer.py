@@ -467,6 +467,9 @@ class FFmpegRenderer:
 
             scene_start_time += scene_duration
 
+        # Calculate total video duration
+        total_video_duration = scene_start_time
+
         # Add audio inputs and build filter_complex
         audio_idx = 1  # 0 is video
         audio_streams = []
@@ -475,8 +478,15 @@ class FFmpegRenderer:
             if audio_info[0] == "bgm":
                 _, audio_path, volume = audio_info
                 cmd.extend(["-i", audio_path])
-                # Loop BGM and apply volume
-                filter_complex_parts.append(f"[{audio_idx}:a]aloop=loop=-1:size=2e9,volume={volume}[bgm]")
+
+                # BGM is 30 seconds long - only loop if video is longer than 30s
+                if total_video_duration > 30.0:
+                    # Loop BGM and apply volume
+                    filter_complex_parts.append(f"[{audio_idx}:a]aloop=loop=-1:size=2e9,volume={volume}[bgm]")
+                else:
+                    # No loop needed - just apply volume
+                    filter_complex_parts.append(f"[{audio_idx}:a]volume={volume}[bgm]")
+
                 audio_streams.append("[bgm]")
                 audio_idx += 1
             else:
@@ -491,7 +501,8 @@ class FFmpegRenderer:
         if audio_streams:
             num_streams = len(audio_streams)
             mix_inputs = "".join(audio_streams)
-            filter_complex_parts.append(f"{mix_inputs}amix=inputs={num_streams}:duration=first[aout]")
+            # Use duration=longest to include all voice clips, then FFmpeg will trim to video length
+            filter_complex_parts.append(f"{mix_inputs}amix=inputs={num_streams}:duration=longest[aout]")
 
             cmd.extend([
                 "-filter_complex", ";".join(filter_complex_parts),
@@ -505,7 +516,9 @@ class FFmpegRenderer:
                 "-crf", "23",
                 # Audio encoding options
                 "-c:a", "aac",
-                "-b:a", "192k"
+                "-b:a", "192k",
+                # CRITICAL: Trim audio to match video duration
+                "-shortest"
             ])
         else:
             # No audio - video only

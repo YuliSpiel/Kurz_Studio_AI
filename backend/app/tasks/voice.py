@@ -204,15 +204,15 @@ def voice_task(self, run_id: str, json_path: str, spec: dict):
             ]
 
             if scene_audio_durations:
-                # Use the longest audio duration for the scene, plus 500ms padding
+                # Use the longest audio duration for the scene, plus 50ms padding
                 max_audio_duration = max(scene_audio_durations)
-                new_duration = max_audio_duration + 500  # Add 500ms padding
+                new_duration = max_audio_duration + 50  # Add 50ms padding (minimal pause)
                 old_duration = scene.get("duration_ms", 5000)
 
                 scene["duration_ms"] = new_duration
-                logger.info(f"[{run_id}] Updated {scene_id} duration: {old_duration}ms → {new_duration}ms (based on TTS: {max_audio_duration}ms)")
+                logger.info(f"[{run_id}] ✅ UPDATED {scene_id} duration: {old_duration}ms → {new_duration}ms (TTS: {max_audio_duration}ms + 50ms padding)")
             else:
-                logger.warning(f"[{run_id}] No audio duration found for {scene_id}, keeping original duration")
+                logger.warning(f"[{run_id}] ⚠️ No audio duration found for {scene_id}, keeping original duration: {scene.get('duration_ms', 5000)}ms")
 
         # Save updated JSON
         with open(json_path, "w", encoding="utf-8") as f:

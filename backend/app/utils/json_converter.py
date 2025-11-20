@@ -245,6 +245,15 @@ def convert_plot_to_json(
                         char1_appearance = char.get("appearance", "")
                         break
 
+                # Validate that appearance doesn't contain variable placeholders like {char_X}
+                import re
+                if re.search(r'\{char_\d+\}', char1_appearance):
+                    raise ValueError(
+                        f"CRITICAL: Character appearance contains unresolved variable placeholder: '{char1_appearance}'. "
+                        f"The plot.json → layout.json conversion failed to replace character variables with actual descriptions. "
+                        f"This indicates the plot_generator did not properly substitute character descriptions."
+                    )
+
                 # Character image (background will be removed by rembg)
                 # Fixed framing with strict composition rules
                 char1_prompt = f"{char1_appearance}, {char1_expr} expression, {char1_pose} pose, head to mid-thigh portrait, face at upper third of frame, body centered and fully visible, consistent scale, pure white background" if char1_appearance else ""
@@ -268,6 +277,15 @@ def convert_plot_to_json(
                     if char["char_id"] == char2_id:
                         char2_appearance = char.get("appearance", "")
                         break
+
+                # Validate that appearance doesn't contain variable placeholders like {char_X}
+                import re
+                if re.search(r'\{char_\d+\}', char2_appearance):
+                    raise ValueError(
+                        f"CRITICAL: Character appearance contains unresolved variable placeholder: '{char2_appearance}'. "
+                        f"The plot.json → layout.json conversion failed to replace character variables with actual descriptions. "
+                        f"This indicates the plot_generator did not properly substitute character descriptions."
+                    )
 
                 # Character image (background will be removed by rembg)
                 # Fixed framing with strict composition rules
@@ -300,6 +318,15 @@ def convert_plot_to_json(
             # General Mode: Use image_prompt directly from plot.json
             # The image_prompt is already provided in the scene data
             image_prompt_raw = first_row.get("image_prompt", "")
+
+            # Validate that image_prompt doesn't contain variable placeholders like {char_X}
+            import re
+            if image_prompt_raw and re.search(r'\{char_\d+\}', image_prompt_raw):
+                raise ValueError(
+                    f"CRITICAL: Image prompt contains unresolved character variable: '{image_prompt_raw}'. "
+                    f"Scene: {scene_id}. The plot_generator failed to replace character placeholders with descriptions. "
+                    f"Check that character descriptions are properly defined in characters.json."
+                )
 
             # If image_prompt is empty string "", reuse previous scene's image
             # (handled by designer - we still create the slot but mark it for reuse)

@@ -287,8 +287,14 @@ export async function getLayoutConfig(runId: string): Promise<LayoutConfigData> 
   return response.json()
 }
 
-export async function confirmLayoutWithConfig(runId: string, layoutConfig?: LayoutConfig): Promise<void> {
-  const body = layoutConfig ? { layout_config: layoutConfig } : {}
+export async function confirmLayoutWithConfig(
+  runId: string,
+  layoutConfig?: LayoutConfig,
+  title?: string
+): Promise<void> {
+  const body: any = {}
+  if (layoutConfig) body.layout_config = layoutConfig
+  if (title !== undefined) body.title = title
 
   const response = await fetch(`${API_BASE}/v1/runs/${runId}/layout-confirm`, {
     method: 'POST',

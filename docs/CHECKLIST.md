@@ -181,4 +181,182 @@
 
 이 체크리스트 그대로 쓰고 싶으면,
 다음에 내가 **단계 1~2용 최소 프로젝트 스캐폴딩 코드** 한 번에 뽑아줄게.
-그거 기준으로 “✔ 하나씩 지워가기 모드”로 진행하면 좋을 듯.
+그거 기준으로 "✔ 하나씩 지워가기 모드"로 진행하면 좋을 듯.
+
+---
+
+## 8. 버그 픽스 & 개선 이력 (2025-11-20)
+
+### 🐛 FFmpeg 렌더링 무한 루프 이슈
+**문제:**
+- 46초 영상 렌더링 중 14분+ 동안 멈춤
+- 출력 파일이 1.9GB로 비정상적으로 커짐
+- 원인: BGM에 `aloop=loop=-1` 적용 + `duration=first` 조합이 작동 안함
+
+**해결:** ([ffmpeg_renderer.py](../backend/app/utils/ffmpeg_renderer.py) Lines 470-522)
+```python
+# Calculate total video duration
+total_video_duration = scene_start_time
+
+# BGM is 30 seconds long - only loop if video is longer than 30s
+if total_video_duration > 30.0:
+    # Loop BGM and apply volume
+    filter_complex_parts.append(f"[{audio_idx}:a]aloop=loop=-1:size=2e9,volume={volume}[bgm]")
+else:
+    # No loop needed - just apply volume
+    filter_complex_parts.append(f"[{audio_idx}:a]volume={volume}[bgm]")
+
+# Use duration=longest for amix
+filter_complex_parts.append(f"{mix_inputs}amix=inputs={num_streams}:duration=longest[aout]")
+
+# Add -shortest flag to trim audio to video length
+cmd.extend(["-shortest"])
+```
+
+**핵심:**
+- BGM은 항상 30초로 생성됨
+- 영상이 30초 이하면 루프 불필요
+- 영상이 30초 초과면 `aloop`로 무한 루프 후 `-shortest`로 자름
+
+---
+
+### 🐛 AI 프롬프트 풍부화 중복 호출 이슈
+**문제:**
+- Enhancement API가 연속으로 2번 호출됨
+- 두 결과가 다르게 나와서 사용자 입력이 예상과 다르게 변경됨
+- 원인: Enter 키 핸들러가 `handleSubmit()`을 직접 호출 → form submit 이벤트도 발생
+
+**해결:** ([HeroChat.tsx](../frontend/src/components/HeroChat.tsx))
+
+1. **중복 호출 방지 가드 추가** (Lines 154-158)
+```typescript
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault()
+  if (!prompt.trim() || disabled) return
+
+  // Prevent duplicate calls while already enhancing
+  if (isEnhancing) {
+    console.log('[ENHANCE] Already enhancing, ignoring duplicate call')
+    return
+  }
+  // ...
+}
+```
+
+2. **Enter 키 핸들러 수정** (Lines 422-432)
+```typescript
+onKeyDown={(e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    // Don't call handleSubmit directly - let the form submit event handle it
+    // This prevents duplicate submissions
+    const form = e.currentTarget.form
+    if (form) {
+      form.requestSubmit()
+    }
+  }
+}}
+```
+
+**핵심:**
+- `isEnhancing` 플래그로 중복 호출 차단
+- Enter 키는 `form.requestSubmit()`만 호출 (직접 호출 금지)
+
+---
+
+### ✨ 레이아웃 설정 모달에 제목 수정 기능 추가
+**요구사항:**
+- 레이아웃 검수 단계에서 영상 제목도 수정 가능해야 함
+
+**구현:**
+
+1. **Frontend - 입력 필드 추가** ([LayoutReviewModal.tsx](../frontend/src/components/LayoutReviewModal.tsx) Lines 223-240)
+```typescript
+<input
+  type="text"
+  value={title}
+  onChange={(e) => setTitle(e.target.value)}
+  placeholder="영상 제목을 입력하세요"
+  style={{/* ... */}}
+/>
+```
+
+2. **API 클라이언트 확장** ([client.ts](../frontend/src/api/client.ts) Lines 290-310)
+```typescript
+export async function confirmLayoutWithConfig(
+  runId: string,
+  layoutConfig?: LayoutConfig,
+  title?: string  // 추가
+): Promise<void> {
+  const body: any = {}
+  if (layoutConfig) body.layout_config = layoutConfig
+  if (title !== undefined) body.title = title
+  // ...
+}
+```
+
+3. **Backend - 제목 저장 로직** ([main.py](../backend/app/main.py) Lines 852-856)
+```python
+# Update title if provided
+if "title" in request:
+    updated_title = request["title"]
+    layout_data["title"] = updated_title
+    logger.info(f"[{run_id}] Updated title in layout.json: {updated_title}")
+```
+
+---
+
+### 🔧 씬 재생 길이 (Scene Duration) 개선
+
+**문제:**
+- TTS 실제 길이: 1.3초 ~ 2.3초 (평균 1.7초)
+- layout.json의 씬 총 길이: 4초 ~ 5.5초
+- **실제 침묵/텀: 2.5 ~ 3초** - 너무 김!
+
+**조사 결과:**
+- [voice.py](../backend/app/tasks/voice.py)에 TTS 길이 기반 duration 업데이트 로직이 이미 존재 (Lines 195-219)
+- MoviePy AudioFileClip으로 실제 TTS 길이 측정 후 layout.json 업데이트
+- 하지만 실제로는 적용 안 됨 (원인: 디버깅 필요)
+
+**해결:** ([voice.py](../backend/app/tasks/voice.py) Lines 206-215)
+```python
+if scene_audio_durations:
+    # Use the longest audio duration for the scene, plus 50ms padding
+    max_audio_duration = max(scene_audio_durations)
+    new_duration = max_audio_duration + 50  # Add 50ms padding (minimal pause)
+    old_duration = scene.get("duration_ms", 5000)
+
+    scene["duration_ms"] = new_duration
+    logger.info(f"[{run_id}] ✅ UPDATED {scene_id} duration: {old_duration}ms → {new_duration}ms (TTS: {max_audio_duration}ms + 50ms padding)")
+else:
+    logger.warning(f"[{run_id}] ⚠️ No audio duration found for {scene_id}, keeping original duration: {scene.get('duration_ms', 5000)}ms")
+```
+
+**변경사항:**
+1. **패딩 대폭 축소**: 500ms → 50ms (거의 끊김 없는 흐름)
+2. **로깅 개선**: ✅/⚠️ 아이콘으로 업데이트 성공/실패 명확히 표시
+3. **디버깅 강화**: duration 업데이트가 실제로 일어나는지 로그로 추적 가능
+
+**예상 효과:**
+- 기존: TTS 1.7s + 500ms = 2.2s 총 재생 시간
+- 개선 후: TTS 1.7s + 50ms = 1.75s 총 재생 시간
+- **0.45초 단축 + 빠른 템포 + 끊김 없는 흐름**
+
+**TODO:**
+- [x] 패딩 500ms → 50ms로 대폭 축소
+- [x] 로깅 개선 (✅/⚠️ 아이콘 추가)
+- [ ] Celery worker 재시작 후 새 run으로 테스트
+- [ ] duration 업데이트가 제대로 작동하는지 로그 확인
+- [ ] 필요시 추가 디버깅 (MoviePy AudioFileClip 이슈 가능성)
+
+**참고 데이터:**
+```
+Run ID: 20251120_1526_귀여운카피바라가
+
+TTS Audio 실제 길이:
+scene_1: 1.67s → 기존: 2.17s (500ms) → 개선: 1.72s (50ms) ✅
+scene_3: 2.35s → 기존: 2.85s (500ms) → 개선: 2.40s (50ms) ✅
+
+기존 문제: 실제 layout은 4-5.5초 (2.5~3초 침묵) ❌
+목표: TTS + 50ms로 거의 끊김 없이 ✅
+```
