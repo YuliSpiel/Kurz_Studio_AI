@@ -319,14 +319,28 @@ def convert_plot_to_json(
             # The image_prompt is already provided in the scene data
             image_prompt_raw = first_row.get("image_prompt", "")
 
-            # Validate that image_prompt doesn't contain variable placeholders like {char_X}
+            # Replace character variable placeholders {char_X} with actual descriptions
             import re
-            if image_prompt_raw and re.search(r'\{char_\d+\}', image_prompt_raw):
-                raise ValueError(
-                    f"CRITICAL: Image prompt contains unresolved character variable: '{image_prompt_raw}'. "
-                    f"Scene: {scene_id}. The plot_generator failed to replace character placeholders with descriptions. "
-                    f"Check that character descriptions are properly defined in characters.json."
-                )
+            if image_prompt_raw:
+                # Find all {char_X} patterns
+                char_vars = re.findall(r'\{(char_\d+)\}', image_prompt_raw)
+                for char_var in char_vars:
+                    # Find the character with this char_id
+                    char_desc = None
+                    for char in characters_data:
+                        if char.get("char_id") == char_var:
+                            char_desc = char.get("appearance", "")
+                            break
+
+                    if not char_desc:
+                        raise ValueError(
+                            f"CRITICAL: Character variable {{{char_var}}} found in image_prompt but no matching character in characters.json. "
+                            f"Scene: {scene_id}, Prompt: '{image_prompt_raw}'"
+                        )
+
+                    # Replace {char_X} with actual description
+                    image_prompt_raw = image_prompt_raw.replace(f"{{{char_var}}}", char_desc)
+                    logger.info(f"[{scene_id}] Replaced {{{char_var}}} with character description (length: {len(char_desc)})")
 
             # If image_prompt is empty string "", reuse previous scene's image
             # (handled by designer - we still create the slot but mark it for reuse)
