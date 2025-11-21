@@ -213,6 +213,54 @@ def director_task(self, asset_results: list, run_id: str, json_path: str):
         logger.info(f"[{run_id}] Layout loaded with {len(layout.get('scenes', []))} scenes")
         logger.info(f"[{run_id}] Mode: {layout.get('metadata', {}).get('mode', 'general')}")
 
+        # Update layout with asset URLs from chord results (if not already updated)
+        # This is needed when director_task is called directly from chord callback (auto mode)
+        if asset_results:
+            logger.info(f"[{run_id}] Updating layout with asset URLs from chord results...")
+            for result in asset_results:
+                if not result or "agent" not in result:
+                    continue
+
+                agent = result["agent"]
+
+                # Update image URLs from designer
+                if agent == "designer" and "images" in result:
+                    for img_result in result["images"]:
+                        scene_id = img_result["scene_id"]
+                        slot_id = img_result["slot_id"]
+                        image_url = img_result["image_url"]
+
+                        for scene in layout.get("scenes", []):
+                            if scene["scene_id"] == scene_id:
+                                for img_slot in scene.get("images", []):
+                                    if img_slot["slot_id"] == slot_id:
+                                        img_slot["image_url"] = image_url
+
+                # Update audio URLs from voice agent
+                elif agent == "voice" and "voice" in result:
+                    for audio_result in result["voice"]:
+                        scene_id = audio_result["scene_id"]
+                        line_id = audio_result["line_id"]
+                        audio_url = audio_result["audio_url"]
+
+                        for scene in layout.get("scenes", []):
+                            if scene["scene_id"] == scene_id:
+                                for text_line in scene.get("texts", []):
+                                    if text_line.get("line_id") == line_id:
+                                        text_line["audio_url"] = audio_url
+                                        logger.info(f"[{run_id}] Updated {scene_id}/{line_id} audio -> {audio_url}")
+
+                # Update global BGM from composer
+                elif agent == "composer" and "audio" in result:
+                    for audio_item in result["audio"]:
+                        if audio_item.get("type") == "bgm" and audio_item.get("id") == "global_bgm":
+                            bgm_url = audio_item.get("path")
+                            if bgm_url:
+                                if "global_bgm" not in layout or layout["global_bgm"] is None:
+                                    layout["global_bgm"] = {}
+                                layout["global_bgm"]["audio_url"] = bgm_url
+                                logger.info(f"[{run_id}] Updated global BGM -> {bgm_url}")
+
         # Check if we're in stub mode (no real assets)
         from app.config import settings
         # Always use full rendering mode since MoviePy is installed

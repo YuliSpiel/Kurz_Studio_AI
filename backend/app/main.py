@@ -872,7 +872,9 @@ async def confirm_layout(run_id: str, request: Dict = Body(default={})):
                 runs[run_id]["state"] = fsm.current_state.value
 
             # Start rendering task
-            director_task.delay(run_id, str(layout_json_path))
+            # Note: director_task expects (asset_results, run_id, json_path)
+            # When called from layout-confirm (not from chord callback), pass empty list for asset_results
+            director_task.delay([], run_id, str(layout_json_path))
             logger.info(f"[{run_id}] Director task started for rendering")
 
             return {

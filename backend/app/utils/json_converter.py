@@ -145,6 +145,26 @@ def convert_plot_to_json(
             text = row["text"]
             text_type = row.get("text_type", "dialogue")
 
+            # Replace character variable placeholders {char_X} with actual character names in text
+            import re
+            if text and characters_data:
+                char_vars_in_text = re.findall(r'\{(char_\d+)\}', text)
+                for char_var in char_vars_in_text:
+                    # Find the character with this char_id and get their name
+                    char_name = None
+                    for char in characters_data:
+                        if char.get("char_id") == char_var:
+                            char_name = char.get("name", "")
+                            break
+
+                    if char_name:
+                        # Replace {char_X} with character name in text
+                        text = text.replace(f"{{{char_var}}}", char_name)
+                        logger.info(f"[{scene_id}] Replaced {{{char_var}}} with '{char_name}' in text")
+                    else:
+                        # Log warning but don't fail - just leave as-is
+                        logger.warning(f"[{scene_id}] Character variable {{{char_var}}} in text but no matching name found")
+
             # text_type이 dialogue일 경우에만 큰따옴표 추가
             display_text = f'"{text}"' if text_type == "dialogue" else text
 

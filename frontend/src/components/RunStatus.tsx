@@ -177,6 +177,34 @@ export default function RunStatus({ runId, onCompleted, reviewMode, onMinimize, 
         )}
         {isTerminalState && <div />}
 
+        {/* Center: Mode indicator */}
+        {!reviewMode && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '6px 12px',
+            backgroundColor: '#DBEAFE',
+            borderRadius: '6px',
+            border: '1px solid #93C5FD',
+          }}>
+            <span style={{
+              width: '8px',
+              height: '8px',
+              backgroundColor: '#3B82F6',
+              borderRadius: '50%',
+              animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+            }} />
+            <span style={{
+              fontSize: '13px',
+              fontWeight: '600',
+              color: '#1D4ED8',
+            }}>
+              자동 생성 모드
+            </span>
+          </div>
+        )}
+
         {/* Right: Minimize/Close Buttons */}
         <div style={{ display: 'flex', gap: '8px' }}>
           {onMinimize && (
