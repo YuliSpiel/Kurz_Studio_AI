@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { getMyRuns, deleteRun, RunListItem } from '../api/client'
 import './Library.css'
 
-export default function Library({ onSelectVideo }: { onSelectVideo?: (runId: string) => void }) {
+export default function Library({ onSelectVideo: _onSelectVideo }: { onSelectVideo?: (runId: string) => void }) {
   const [runs, setRuns] = useState<RunListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

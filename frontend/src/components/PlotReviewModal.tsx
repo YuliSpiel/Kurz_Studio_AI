@@ -12,7 +12,7 @@ interface Scene {
   image_prompt: string
   text: string
   speaker: string
-  duration_ms: number
+  duration_ms?: number
 }
 
 export default function PlotReviewModal({ runId, onClose, onConfirmed }: PlotReviewModalProps) {
@@ -409,11 +409,6 @@ const activeStepCircleStyle: React.CSSProperties = {
   boxShadow: '0 0 0 4px rgba(111, 159, 160, 0.1)',
 }
 
-const completedStepCircleStyle: React.CSSProperties = {
-  backgroundColor: '#10B981',
-  border: '2px solid #10B981',
-}
-
 const pendingStepCircleStyle: React.CSSProperties = {
   backgroundColor: '#F3F4F6',
   border: '2px solid #E5E7EB',
@@ -444,6 +439,13 @@ const stepDescriptionStyle: React.CSSProperties = {
   fontSize: '13px',
   color: '#9CA3AF',
   lineHeight: '1.4',
+}
+
+const stepConnectorStyle: React.CSSProperties = {
+  width: '2px',
+  height: '20px',
+  backgroundColor: '#E5E7EB',
+  marginLeft: '21px',
 }
 
 const contentContainerStyle: React.CSSProperties = {
