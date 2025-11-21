@@ -923,12 +923,15 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   font-family: 'Pretendard JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   display: flex;
+  flex-direction: column;
 }
 
 .enhancement-modal-layout {
   display: flex;
   width: 100%;
   min-height: 500px;
+  flex: 1;
+  overflow: hidden;
 }
 
 /* Left Stepper Section */
@@ -940,6 +943,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0;
+  overflow-y: auto;
 }
 
 .enhancement-step {

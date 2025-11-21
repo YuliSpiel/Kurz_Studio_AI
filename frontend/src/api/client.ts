@@ -408,3 +408,13 @@ export async function deleteRun(runId: string): Promise<void> {
     throw new Error(error.detail || 'Failed to delete run')
   }
 }
+
+export async function cancelRun(runId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/v1/runs/${encodeURIComponent(runId)}/cancel`, {
+    method: 'POST',
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to cancel run: ${response.statusText}`)
+  }
+}
