@@ -1,26 +1,8 @@
-# AutoShorts 워크플로 설명
+# Kurz AI Studio - 워크플로우
 
-## ⚠️ IMPORTANT: Celery Worker Configuration
+**최종 업데이트**: 2025-11-21
 
-**Before running AutoShorts, ensure your Celery worker is configured for parallel execution!**
-
-```bash
-# Start worker with gevent pool (REQUIRED for parallel asset generation)
-cd backend
-./start_worker.sh
-```
-
-**DO NOT use `--pool=solo`** as it disables parallel execution and breaks the chord pattern.
-
-See [CELERY_SETUP.md](./CELERY_SETUP.md) for detailed configuration guide.
-
----
-
-## FSM (Finite State Machine) 오케스트레이션
-
-AutoShorts는 FSM 기반 오케스트레이션을 사용하여 생성 파이프라인을 관리합니다.
-
-### 상태 다이어그램
+## FSM 상태 전이
 
 ```
 ┌────────┐
@@ -29,17 +11,17 @@ AutoShorts는 FSM 기반 오케스트레이션을 사용하여 생성 파이프�
     │
     ↓
 ┌─────────────────┐
-│ PLOT_GENERATION │ ← 기획자: CSV → JSON 생성
+│ PLOT_GENERATION │ ← 기획자: characters.json + plot.json + layout.json
 └───┬─────────────┘
     │
-    ↓
+    ↓ (review_mode=true 시 여기서 대기)
 ┌─────────────────────┐
 │ ASSET_GENERATION    │ ← 디자이너/작곡가/성우 병렬 실행
 └───┬─────────────────┘
     │
     ↓
 ┌─────────────────┐
-│   RENDERING     │ ← 감독: MoviePy 합성
+│   RENDERING     │ ← 감독: FFmpeg 합성
 └───┬─────────────┘
     │
     ↓
@@ -49,53 +31,47 @@ AutoShorts는 FSM 기반 오케스트레이션을 사용하여 생성 파이프�
     │
     ├─ Pass → END
     │
-    └─ Fail → PLOT_GENERATION (재시도)
-
-에러 발생 시:
-    ↓
-┌─────────┐
-│ FAILED  │
-└─────────┘
+    └─ Fail → FAILED (또는 재시도)
 ```
-
-### 상태 전이 규칙
-
-| 현재 상태 | 가능한 다음 상태 |
-|---------|---------------|
-| INIT | PLOT_GENERATION, FAILED |
-| PLOT_GENERATION | ASSET_GENERATION, FAILED |
-| ASSET_GENERATION | RENDERING, FAILED |
-| RENDERING | QA, FAILED |
-| QA | END, PLOT_GENERATION (재시도), FAILED |
-| END | (종료 상태) |
-| FAILED | (종료 상태) |
 
 ---
 
-## 오케스트레이션 플로우
+## 실행 모드
+
+### 1. Review Mode (검수 모드)
+- `review_mode=true`
+- PLOT_GENERATION 완료 후 대기
+- 사용자가 레이아웃 검수/수정 후 "확정" 버튼 클릭
+- `/v1/runs/{run_id}/layout-confirm` 호출로 진행
+
+### 2. Auto Mode (자동 모드)
+- `review_mode=false`
+- PLOT_GENERATION 완료 즉시 ASSET_GENERATION 진행
+- 검수 단계 없이 자동 완료
+
+---
+
+## 상세 워크플로우
 
 ### 1. INIT → PLOT_GENERATION
 
-**담당**: 기획자 Agent (`tasks/plan.py`)
+**담당**: `tasks/plan.py`
 
 **작업**:
-1. 사용자 프롬프트 수신
-2. CSV 생성 (LLM 또는 룰 기반)
-   - 컬럼: scene_id, sequence, char_id, text, emotion, subtitle_text, duration_ms
-3. CSV → JSON 변환
-   - 캐릭터 정의 (char_id, name, persona, seed)
-   - 씬 구조 (images, subtitles, dialogue, bgm, sfx)
-4. JSON 파일 저장
+1. 사용자 프롬프트 분석
+2. Gemini 2.5 Flash로 시나리오 생성
+3. 파일 생성:
+   - `characters.json`: 캐릭터 정의 (appearance, personality, voice_profile)
+   - `plot.json`: 장면별 시나리오 (expression, pose, text, emotion)
+   - `layout.json`: 렌더링용 통합 데이터 (images, texts, timeline)
 
-**전이 조건**:
-- CSV/JSON 생성 성공 → `ASSET_GENERATION`
-- 실패 → `FAILED`
+**프롬프트 템플릿 위치**: `utils/plot_generator.py`
 
 ---
 
 ### 2. PLOT_GENERATION → ASSET_GENERATION
 
-**팬아웃/배리어 패턴**: Celery `chord`를 사용하여 3개 에이전트를 병렬 실행
+**Celery Chord 패턴**으로 3개 Agent 병렬 실행:
 
 ```python
 chord(
@@ -104,333 +80,96 @@ chord(
         composer_task.s(run_id, json_path, spec),
         voice_task.s(run_id, json_path, spec),
     )
-)(director_task.s(run_id, json_path))
+)(director_task.s(asset_results, run_id, json_path))
 ```
 
-#### 2.1. Designer Agent (`tasks/designer.py`)
+#### 2.1 Designer Agent (`tasks/designer.py`)
+- layout.json에서 각 씬의 `image_prompt` 읽기
+- Gemini Flash 2.0으로 이미지 생성
+- 이미지 경로를 layout.json에 업데이트
 
-**작업**:
-- JSON에서 각 씬의 이미지 슬롯 읽기
-- ComfyUI로 이미지 생성
-  - 캐릭터: `char_seed` 고정
-  - 배경: `bg_seed = BG_SEED_BASE + scene_id`
-  - LoRA 적용 (art_style)
-  - 참조 이미지 사용 (OmniRef)
-- 생성된 이미지 경로를 JSON 업데이트
+#### 2.2 Composer Agent (`tasks/composer.py`)
+- layout.json에서 `bgm_prompt` 읽기
+- ElevenLabs Sound Effects API로 BGM 생성 (30초)
+- BGM 경로를 layout.json에 업데이트
 
-**결과**:
-```json
-{
-  "images": [
-    {
-      "scene_id": "scene_1",
-      "slot_id": "center",
-      "image_url": "app/data/outputs/run_123_scene_1_center.png"
-    }
-  ]
-}
-```
-
-#### 2.2. Composer Agent (`tasks/composer.py`)
-
-**작업**:
-- JSON timeline에서 총 duration 읽기
-- BGM 생성 (Mubert/Udio/Suno)
-  - 장르/무드 기반
-  - 전체 길이 맞춤
-- SFX 생성 (선택적)
-  - 대사/감정에서 무드 태그 추출
-  - 적절한 효과음 선택
-- 생성된 오디오 경로를 JSON 업데이트
-
-**결과**:
-```json
-{
-  "global_bgm": {
-    "bgm_id": "global_bgm",
-    "genre": "ambient",
-    "audio_url": "app/data/outputs/run_123_global_bgm.mp3",
-    "volume": 0.3
-  }
-}
-```
-
-#### 2.3. Voice Agent (`tasks/voice.py`)
-
-**작업**:
-- JSON에서 각 씬의 dialogue 읽기
-- TTS 생성 (ElevenLabs/PlayHT)
-  - 캐릭터별 voice_profile 매핑
-  - 감정(emotion) 반영
-- 생성된 음성 파일 경로를 JSON 업데이트
-
-**결과**:
-```json
-{
-  "dialogue": [
-    {
-      "line_id": "scene_1_line_1",
-      "char_id": "char_1",
-      "text": "안녕하세요!",
-      "emotion": "happy",
-      "audio_url": "app/data/outputs/run_123_scene_1_line_1.mp3",
-      "start_ms": 0,
-      "duration_ms": 2000
-    }
-  ]
-}
-```
-
-**배리어**: 3개 태스크 모두 완료 시 chord 콜백 실행
+#### 2.3 Voice Agent (`tasks/voice.py`)
+- layout.json에서 각 씬의 대사(`texts`) 읽기
+- ElevenLabs TTS로 음성 합성
+- 음성 경로를 layout.json에 업데이트
+- **TTS 길이 기반 duration 자동 조정**
 
 ---
 
 ### 3. ASSET_GENERATION → RENDERING
 
-**담당**: 감독 Agent (`tasks/director.py`)
+**담당**: `tasks/director.py`
 
 **작업**:
-1. 업데이트된 JSON 로드 (모든 에셋 경로 포함)
-2. MoviePy로 씬별 클립 생성
-   - 배경 + 이미지 레이어 합성
-   - 자막 오버레이 (TextClip)
-   - 위치: top/center/bottom
-3. 씬 클립 연결 (concatenate_videoclips)
-4. 오디오 트랙 합성
-   - 전역 BGM (볼륨 낮춤)
-   - 대사 음성 (타이밍 맞춤)
-   - SFX (start_ms 기준 배치)
-5. 최종 영상 렌더링
+1. 업데이트된 layout.json 로드
+2. FFmpeg로 영상 합성
+   - 이미지 레이어링
+   - 한글 자막 오버레이 (Pretendard 폰트)
+   - 음성 타이밍 동기화
+   - BGM 믹싱 (볼륨 0.3)
+3. 최종 영상 출력
    - 해상도: 1080x1920 (9:16)
    - FPS: 30
-   - 코덱: H.264 (libx264)
-   - 오디오: AAC
-6. 파일 저장: `app/data/outputs/{run_id}_final.mp4`
+   - 코덱: H.264
 
-**전이 조건**:
-- 렌더링 성공 → `END`
-- 실패 → `FAILED` 또는 `RECOVER`
+**출력**: `app/data/outputs/{run_id}/final_video.mp4`
 
 ---
-
-### 4. RENDERING → END
-
-**작업**:
-- FSM을 `END` 상태로 전이
-- Run progress를 1.0으로 설정
-- 프론트엔드에 완료 알림 (WebSocket)
-- 결과 artifacts 반환:
-  ```json
-  {
-    "video_url": "app/data/outputs/run_123_final.mp4",
-    "json_path": "app/data/outputs/run_123_layout.json"
-  }
-  ```
-
----
-
-## Recovery 메커니즘
-
-### RECOVER 상태
-
-**진입 조건**:
-- 임의의 상태에서 에러 발생
-- `fsm.can_recover() == True`
-
-**동작**:
-1. 실패한 상태 식별
-2. 재시도 횟수 확인 (최대 3회)
-3. 폴백 전략 적용:
-   - TTS 실패 → Provider 교체 (ElevenLabs ↔ PlayHT)
-   - 이미지 생성 실패 → seed 변경 재시도
-   - 타임아웃 → 재실행
-4. 실패한 태스크 재실행
-
-**전이**:
-- 복구 성공 → 실패했던 상태로 재진입
-- 복구 실패 또는 최대 재시도 초과 → `FAILED`
-
-### 자동 재시도 (Celery)
-
-Celery 태스크는 자동 재시도 설정:
-
-```python
-@celery.task(
-    autoretry_for=(Exception,),
-    max_retries=3,
-    retry_backoff=True,
-    retry_backoff_max=600,
-    retry_jitter=True
-)
-```
-
-- 지수 백오프 (exponential backoff)
-- 최대 10분 대기
-- 지터 추가 (부하 분산)
-
----
-
-## 시퀀스 다이어그램
-
-```
-사용자      프론트엔드      FastAPI      Celery Workers      ComfyUI/TTS/Music
-  │             │              │              │                     │
-  │─ 입력 ────→│              │              │                     │
-  │             │─ POST /runs ─→│              │                     │
-  │             │              │─ FSM Init ──→│                     │
-  │             │              │              │                     │
-  │             │←─ run_id ────│              │                     │
-  │             │              │              │                     │
-  │             │─ WS connect ─→│              │                     │
-  │             │              │              │                     │
-  │             │              │    [Plan Task]                     │
-  │             │              │─────────────→│                     │
-  │             │              │              │─ CSV → JSON         │
-  │             │              │←─────────────│                     │
-  │             │              │              │                     │
-  │             │              │    [Fan-out: chord]                │
-  │             │              │─────────────→│                     │
-  │             │              │              ├─ Designer ─────────→│
-  │             │              │              │                     │─ Generate
-  │             │              │              │←────────────────────│
-  │             │              │              ├─ Composer ─────────→│
-  │             │              │              │                     │─ Generate
-  │             │              │              │←────────────────────│
-  │             │              │              ├─ Voice ────────────→│
-  │             │              │              │                     │─ TTS
-  │             │              │              │←────────────────────│
-  │             │              │              │                     │
-  │             │              │    [Barrier: all done]             │
-  │             │              │              │                     │
-  │             │              │    [Director Task]                 │
-  │             │              │─────────────→│                     │
-  │             │              │              │─ MoviePy Render     │
-  │             │              │←─────────────│                     │
-  │             │              │              │                     │
-  │             │← WS: END ────│              │                     │
-  │             │              │              │                     │
-  │← 영상 재생 ─│              │              │                     │
-```
-
----
-
-## 성능 최적화
-
-### 병렬 처리
-
-- **Designer, Composer, Voice**: 동시 실행
-- Celery worker pool 크기: `--concurrency=4` (기본)
-- Redis 큐 분리 가능 (우선순위 처리)
-
-### 타임아웃
-
-- ComfyUI 이미지 생성: 5분
-- TTS 생성: 1분
-- 전체 Run: 1시간 (hard limit)
-
-### 캐싱
-
-- 동일 prompt/seed: 이미지 재사용 가능 (추후 구현)
-- LLM 응답 캐싱 (CSV 생성 시)
-
----
-
-## 모니터링
-
-### 로그
-
-- FastAPI: `uvicorn` 로그
-- Celery: worker 로그
-- Provider 호출: `httpx` 로그
-
-### 메트릭 (추후 추가)
-
-- Run 성공률
-- 평균 생성 시간 (단계별)
-- Provider 호출 횟수/실패율
-
----
-
-## 확장 가능성
-
-### 새로운 Agent 추가
-
-예: **Editor Agent** (편집 효과)
-
-1. `tasks/editor.py` 생성
-2. Chord에 추가:
-   ```python
-   chord(
-       group(designer, composer, voice, editor)
-   )(director)
-   ```
-3. JSON 스키마 확장 (transitions, effects)
-
-### 분산 실행
-
-- Celery broker를 RabbitMQ로 교체
-- Worker를 여러 머신에 배포
-- Redis → PostgreSQL (result backend)
-
-### 우선순위 큐
-
-```python
-# 높은 우선순위 Run
-task.apply_async(args=[...], priority=9)
-```
-
----
-
-## 참고 자료
-
-- [Celery Documentation](https://docs.celeryproject.org/)
-- [MoviePy Documentation](https://zulko.github.io/moviepy/)
-- [ComfyUI API](https://github.com/comfyanonymous/ComfyUI)
 
 ### 4. RENDERING → QA
 
-**담당**: QA Agent (`tasks/qa.py`)
-
-**작업**:
-1. 영상 파일 존재 확인
-2. JSON 레이아웃 유효성 검증
-   - 필수 필드 존재 (scenes, timeline)
-   - 모든 씬에 이미지 존재
-3. 에셋 파일 확인
-   - 이미지: `scenes[].images[].image_url` 경로 존재
-   - BGM: `global_bgm.audio_url` 경로 존재
-   - 음성: `scenes[].dialogue[].audio_url` 경로 존재
-4. 품질 판정
-   - Pass: 모든 검사 통과
-   - Fail: 하나 이상 실패
-
-**전이 조건**:
-- Pass → `END`
-- Fail → `PLOT_GENERATION` (재시도)
-- 에러 → `FAILED`
+**담당**: `tasks/qa.py`
 
 **검수 항목**:
-```python
-qa_results = {
-    "checks": [
-        {"name": "Video file exists", "passed": True},
-        {"name": "JSON has 'scenes' field", "passed": True},
-        {"name": "JSON has 'timeline' field", "passed": True},
-        {"name": "Image for scene_1", "passed": True},
-        {"name": "Background music exists", "passed": True}
-    ],
-    "passed": True,
-    "issues": []
-}
-```
+- 영상 파일 존재 확인
+- 파일 크기 > 0
+- JSON 레이아웃 유효성
 
-**재시도 로직**:
-- QA 실패 시 `retry_from_qa()` 메서드 호출
-- FSM이 PLOT_GENERATION으로 전이
-- 플롯부터 재생성 시작
-- 재시도 횟수는 metadata에 기록
+**결과**:
+- Pass → END (완료)
+- Fail → FAILED
 
 ---
 
-### 5. QA → END
+## 진행률 매핑
 
+| 단계 | 상태 | 진행률 | 로그 메시지 |
+|------|------|--------|------------|
+| 플롯 시작 | PLOT_GENERATION | 0.10 | "플롯 생성 시작" |
+| 플롯 완료 | PLOT_GENERATION | 0.20 | "JSON 레이아웃 생성 완료" |
+| 에셋 시작 | ASSET_GENERATION | 0.25 | "에셋 생성 시작" |
+| 이미지 생성 | ASSET_GENERATION | 0.30-0.50 | "이미지 생성 중" |
+| BGM 생성 | ASSET_GENERATION | 0.50-0.60 | "배경음악 생성 중" |
+| TTS 생성 | ASSET_GENERATION | 0.60-0.70 | "음성 합성 중" |
+| 렌더링 시작 | RENDERING | 0.75 | "렌더링 시작" |
+| 렌더링 완료 | RENDERING | 0.85 | "렌더링 완료" |
+| QA | QA | 0.90 | "품질 검수 중" |
+| 완료 | END | 1.00 | "영상 생성 완료" |
+
+---
+
+## Celery 설정
+
+### 필수: 병렬 풀 사용
+
+```bash
+# gevent pool (권장)
+celery -A app.celery_app worker --loglevel=info --pool=gevent --concurrency=10
+```
+
+**주의**: `--pool=solo` 사용 금지 (병렬 실행 불가)
+
+### Worker 재시작
+
+`backend/app/` 하위 Python 파일 수정 시 **반드시 Worker 재시작 필요**:
+
+```bash
+pkill -f "celery.*worker"
+cd backend
+./kvenv/bin/celery -A app.celery_app worker --loglevel=info --pool=gevent --concurrency=10
+```
