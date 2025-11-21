@@ -171,19 +171,21 @@ def layout_ready_task(self, asset_results: list, run_id: str, json_path: str):
 
 
 @celery.task(bind=True, name="tasks.director")
-def director_task(self, run_id: str, json_path: str):
+def director_task(self, asset_results: list, run_id: str, json_path: str):
     """
     Compose final 9:16 video from all generated assets.
 
-    This task is called directly after layout confirmation (not as chord callback anymore).
+    This task is called as chord callback after all asset generation tasks complete.
 
     Args:
+        asset_results: List of results from parallel asset generation tasks (designer, composer, voice)
         run_id: Run identifier
         json_path: Path to JSON layout with all asset URLs
 
     Returns:
         Dict with final video URL
     """
+    logger.info(f"[{run_id}] Director: Received asset results from chord: {asset_results}")
     logger.info(f"[{run_id}] Director: Starting video composition...")
     publish_progress(run_id, progress=0.7, log="감독: 최종 영상 합성 시작...")
 

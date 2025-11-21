@@ -247,3 +247,14 @@ def unregister_fsm(run_id: str):
         logger.info(f"Unregistered FSM for run {run_id} from Redis")
     except Exception as e:
         logger.error(f"Failed to delete FSM from Redis for run {run_id}: {e}")
+
+
+def invalidate_fsm_cache(run_id: str):
+    """
+    Invalidate in-memory FSM cache for a run_id.
+    This forces the next get_fsm() call to reload from Redis.
+    Used when cancelling a run to ensure fresh state.
+    """
+    if run_id in _fsm_registry:
+        _fsm_registry.pop(run_id, None)
+        logger.info(f"Invalidated FSM cache for run {run_id}")

@@ -2,7 +2,7 @@
 Pydantic models for run specifications and status.
 """
 from pydantic import BaseModel, Field
-from typing import Literal, Optional, Dict, List
+from typing import Literal, Optional, Dict, List, Any
 
 
 class CharacterInput(BaseModel):
@@ -125,9 +125,9 @@ class RunStatus(BaseModel):
     state: str  # RunState enum value
     progress: float = Field(ge=0.0, le=1.0)
 
-    artifacts: Dict[str, str] = Field(
+    artifacts: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Generated artifacts (csv_path, json_path, video_url, etc.)"
+        description="Generated artifacts (csv_path, json_path, video_url, qa_result, etc.)"
     )
 
     logs: List[str] = Field(

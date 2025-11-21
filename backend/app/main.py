@@ -697,6 +697,16 @@ async def regenerate_plot(run_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to regenerate plot: {str(e)}")
 
 
+@app.post("/api/v1/runs/{run_id}/cancel")
+async def cancel_run(run_id: str):
+    """
+    Cancel a running video generation task.
+    Revokes all pending/running Celery tasks and marks FSM as FAILED.
+    """
+    from app.api.cancel import cancel_run_handler
+    return await cancel_run_handler(run_id, runs)
+
+
 @app.get("/api/v1/runs/{run_id}/layout-config")
 async def get_layout_config(run_id: str):
     """
