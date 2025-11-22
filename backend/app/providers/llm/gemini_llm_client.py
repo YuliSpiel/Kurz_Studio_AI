@@ -74,7 +74,8 @@ class GeminiLLMClient:
                 combined_prompt += f"{content}"
 
         logger.info(f"[GEMINI] Generating text with temperature={temperature}, max_tokens={max_tokens}")
-        logger.debug(f"[GEMINI] Prompt length: {len(combined_prompt)} chars")
+        logger.info(f"[GEMINI] Prompt length: {len(combined_prompt)} chars")
+        logger.info(f"[GEMINI] Prompt preview (first 500 chars): {combined_prompt[:500]}...")
 
         # Generate content with safety settings
         from google.generativeai.types import HarmCategory, HarmBlockThreshold
@@ -134,9 +135,11 @@ class GeminiLLMClient:
                 logger.debug(f"[GEMINI] Finish reason: {finish_reason} ({finish_reason.name if hasattr(finish_reason, 'name') else 'unknown'})")
                 logger.debug(f"[GEMINI] Safety ratings: {candidate.safety_ratings}")
 
-                # finish_reason enum: 1=STOP (success), 2=MAX_TOKENS (hit limit), 3=SAFETY (blocked), 4=RECITATION, 5=OTHER
-                # Allow STOP (1) and MAX_TOKENS (2) - both provide usable content
-                if finish_reason not in [1, 2]:
+                # finish_reason enum: STOP (success), MAX_TOKENS (hit limit), SAFETY (blocked), RECITATION, OTHER
+                # Allow STOP and MAX_TOKENS - both provide usable content
+                # Note: finish_reason can be int or Enum depending on API version
+                finish_reason_value = finish_reason.value if hasattr(finish_reason, 'value') else finish_reason
+                if finish_reason_value not in [1, 2]:  # 1=STOP, 2=MAX_TOKENS
                     error_msg = (
                         f"Response blocked with finish_reason={finish_reason} ({finish_reason.name if hasattr(finish_reason, 'name') else 'unknown'}). "
                         f"Safety ratings: {candidate.safety_ratings}"
@@ -151,10 +154,26 @@ class GeminiLLMClient:
                         continue
                     raise ValueError(error_msg)
 
-                result_text = response.text
+                # Try to extract text - handle cases where parts might be empty
+                try:
+                    result_text = response.text
+                except ValueError as e:
+                    # response.text raises ValueError if no valid parts
+                    # Try to extract from parts directly
+                    if candidate.content and candidate.content.parts:
+                        result_text = "".join([p.text for p in candidate.content.parts if hasattr(p, 'text')])
+                    else:
+                        error_msg = f"No text content in response: {e}"
+                        logger.warning(f"[GEMINI] {error_msg}")
+                        if attempt < max_retries - 1:
+                            time.sleep(2 ** attempt)
+                            continue
+                        raise ValueError(error_msg)
 
-                if not result_text or len(result_text) < 50:
-                    error_msg = f"Generated text too short ({len(result_text)} chars)"
+                # For JSON mode, accept shorter responses since valid JSON can be compact
+                min_length = 10 if json_mode else 50
+                if not result_text or len(result_text) < min_length:
+                    error_msg = f"Generated text too short ({len(result_text)} chars, min: {min_length})"
                     logger.warning(f"[GEMINI] {error_msg}")
                     if attempt < max_retries - 1:
                         time.sleep(2 ** attempt)

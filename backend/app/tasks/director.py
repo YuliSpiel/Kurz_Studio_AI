@@ -113,10 +113,13 @@ def layout_ready_task(self, asset_results: list, run_id: str, json_path: str):
         from app.orchestrator.fsm import get_fsm
         fsm = get_fsm(run_id)
 
-        # Only skip layout review for general/ad modes when review_mode=False (auto-generation)
-        # If review_mode=True (검수 모드), user wants to review layout for all modes
-        if mode in ["general", "ad"] and not review_mode:
-            logger.info(f"[{run_id}] Mode={mode}, skipping LAYOUT_REVIEW, going directly to RENDERING")
+        # State transition logic:
+        # - review_mode=False (자동 모드): Skip all reviews, go directly to RENDERING
+        # - review_mode=True (검수 모드): Go to ASSET_REVIEW first for image/BGM review
+
+        if not review_mode:
+            # Auto mode: skip all reviews, go directly to RENDERING
+            logger.info(f"[{run_id}] Auto mode (review_mode=False), skipping reviews, going directly to RENDERING")
             if fsm and fsm.transition_to(RunState.RENDERING):
                 logger.info(f"[{run_id}] Transitioned to RENDERING")
                 publish_progress(
@@ -132,7 +135,7 @@ def layout_ready_task(self, asset_results: list, run_id: str, json_path: str):
 
                 # Trigger director task immediately
                 logger.info(f"[{run_id}] Triggering director_task for immediate rendering")
-                director_task.delay(run_id, json_path)
+                director_task.delay([], run_id, json_path)
 
             return {
                 "status": "success",
@@ -140,24 +143,24 @@ def layout_ready_task(self, asset_results: list, run_id: str, json_path: str):
                 "run_id": run_id
             }
 
-        # For story mode OR when review_mode=True, go to LAYOUT_REVIEW
+        # Review mode: go to ASSET_REVIEW for image/BGM review first
         else:
-            if fsm and fsm.transition_to(RunState.LAYOUT_REVIEW):
-                logger.info(f"[{run_id}] Transitioned to LAYOUT_REVIEW")
+            if fsm and fsm.transition_to(RunState.ASSET_REVIEW):
+                logger.info(f"[{run_id}] Transitioned to ASSET_REVIEW")
                 publish_progress(
                     run_id,
-                    state="LAYOUT_REVIEW",
-                    progress=0.65,
-                    log="레이아웃 검수 단계 - 사용자 확인 대기 중"
+                    state="ASSET_REVIEW",
+                    progress=0.6,
+                    log="에셋 검수 단계 - 이미지/BGM 확인 대기 중"
                 )
 
                 if run_id in runs:
                     runs[run_id]["state"] = fsm.current_state.value
-                    runs[run_id]["progress"] = 0.65
+                    runs[run_id]["progress"] = 0.6
 
             return {
                 "status": "success",
-                "message": "Assets generated, waiting for layout review",
+                "message": "Assets generated, waiting for asset review",
                 "run_id": run_id
             }
 

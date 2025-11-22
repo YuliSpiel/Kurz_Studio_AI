@@ -229,9 +229,9 @@ def plan_task(self, run_id: str, spec: dict):
         characters_path, plot_json_path = generate_plot_with_characters(
             run_id=run_id,
             prompt=spec["prompt"],
-            num_characters=spec["num_characters"],
-            num_cuts=spec["num_cuts"],
-            mode=spec["mode"],
+            num_characters=spec.get("num_characters", 2),  # Default to 2 characters if not specified
+            num_cuts=spec.get("num_cuts", 7),  # Default to 7 cuts if not specified
+            mode=spec.get("mode", "general"),  # Default to general mode
             characters=spec.get("characters"),  # Pass user-provided characters (Story Mode)
             narrative_tone=spec.get("narrative_tone"),  # Pass narrative tone
             plot_structure=spec.get("plot_structure")  # Pass plot structure

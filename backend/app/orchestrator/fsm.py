@@ -17,6 +17,7 @@ class RunState(Enum):
     PLOT_GENERATION = "PLOT_GENERATION"  # Director: 플롯 생성
     PLOT_REVIEW = "PLOT_REVIEW"  # User: 플롯 검수 및 수정
     ASSET_GENERATION = "ASSET_GENERATION"  # Voice/Painter/Composer
+    ASSET_REVIEW = "ASSET_REVIEW"  # User: 에셋(이미지/BGM) 검수 및 재생성
     LAYOUT_REVIEW = "LAYOUT_REVIEW"  # User: 레이아웃 검수 및 확인
     RENDERING = "RENDERING"  # Director: 영상 합성
     QA = "QA"  # QA Agent: 품질 검수
@@ -39,12 +40,13 @@ class FSM:
         RunState.INIT: [RunState.PLOT_GENERATION, RunState.FAILED],
         RunState.PLOT_GENERATION: [RunState.PLOT_REVIEW, RunState.ASSET_GENERATION, RunState.FAILED],  # Review mode → PLOT_REVIEW, Auto mode → ASSET
         RunState.PLOT_REVIEW: [RunState.ASSET_GENERATION, RunState.PLOT_GENERATION, RunState.FAILED],  # Confirm → ASSET, Regenerate → PLOT
-        RunState.ASSET_GENERATION: [RunState.LAYOUT_REVIEW, RunState.RENDERING, RunState.FAILED],  # General/Ad → RENDERING, Story → LAYOUT_REVIEW
+        RunState.ASSET_GENERATION: [RunState.ASSET_REVIEW, RunState.LAYOUT_REVIEW, RunState.RENDERING, RunState.FAILED],  # Review mode → ASSET_REVIEW, General/Ad → RENDERING, Story → LAYOUT_REVIEW
+        RunState.ASSET_REVIEW: [RunState.LAYOUT_REVIEW, RunState.RENDERING, RunState.ASSET_GENERATION, RunState.FAILED],  # Confirm → LAYOUT_REVIEW/RENDERING, Regenerate → ASSET
         RunState.LAYOUT_REVIEW: [RunState.RENDERING, RunState.ASSET_GENERATION, RunState.FAILED],  # Confirm → RENDERING, Regenerate → ASSET
         RunState.RENDERING: [RunState.QA, RunState.FAILED],
         RunState.QA: [RunState.END, RunState.PLOT_GENERATION, RunState.FAILED],  # Pass → END, Fail → 재시도
         RunState.END: [],
-        RunState.FAILED: [],
+        RunState.FAILED: [RunState.PLOT_GENERATION, RunState.PLOT_REVIEW],  # Allow retry from FAILED state
     }
 
     def __init__(self, run_id: str, initial_state: RunState = RunState.INIT):

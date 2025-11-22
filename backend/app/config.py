@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     ENV: str = "dev"
     LOG_LEVEL: str = "INFO"
 
+    # Data directories
+    OUTPUT_DIR: Path = Path(__file__).resolve().parent / "data" / "outputs"
+
     # Backend network
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8080

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getRun, cancelRun } from '../api/client'
 import PlotReviewModal from './PlotReviewModal'
 import LayoutReviewModal from './LayoutReviewModal'
+import AssetReviewModal from './AssetReviewModal'
 
 interface RunStatusProps {
   runId: string
@@ -15,6 +16,7 @@ export default function RunStatus({ runId, onCompleted, reviewMode, onMinimize, 
   const [status, setStatus] = useState<any>(null)
   const [logs, setLogs] = useState<string[]>([])
   const [showPlotReview, setShowPlotReview] = useState(false)
+  const [showAssetReview, setShowAssetReview] = useState(false)
   const [assetAnimFrame, setAssetAnimFrame] = useState(1)
   const [isCancelling, setIsCancelling] = useState(false)
   const [_isMinimized, setIsMinimized] = useState(false)
@@ -78,6 +80,11 @@ export default function RunStatus({ runId, onCompleted, reviewMode, onMinimize, 
           setShowPlotReview(true)
         }
 
+        // ASSET_REVIEW 상태일 때 모달 표시 (review mode일 때만)
+        if (data.state === 'ASSET_REVIEW' && reviewMode) {
+          setShowAssetReview(true)
+        }
+
         // END 상태일 때 모달을 표시하므로 onCompleted 호출 제거
         // (onCompleted를 호출하면 App.tsx가 Player 컴포넌트로 전환되어 팝업이 아닌 페이지에 영상이 표시됨)
       }
@@ -99,6 +106,11 @@ export default function RunStatus({ runId, onCompleted, reviewMode, onMinimize, 
         // PLOT_REVIEW 상태 감지 (review mode일 때만)
         if (data.state === 'PLOT_REVIEW' && reviewMode) {
           setShowPlotReview(true)
+        }
+
+        // ASSET_REVIEW 상태 감지 (review mode일 때만)
+        if (data.state === 'ASSET_REVIEW' && reviewMode) {
+          setShowAssetReview(true)
         }
 
         // END 상태일 때 모달을 표시하므로 onCompleted 호출 제거
@@ -1129,6 +1141,24 @@ export default function RunStatus({ runId, onCompleted, reviewMode, onMinimize, 
           </div>
         </div>
       </div>
+    )
+  }
+
+  // ASSET_REVIEW 상태일 때 에셋 검수 모달 표시
+  if (status.state === 'ASSET_REVIEW' && showAssetReview) {
+    return (
+      <AssetReviewModal
+        runId={runId}
+        isOpen={true}
+        onConfirm={() => {
+          setShowAssetReview(false)
+          // Refresh status after confirm
+          getRun(runId).then(setStatus)
+        }}
+        onClose={() => {
+          setShowAssetReview(false)
+        }}
+      />
     )
   }
 

@@ -418,3 +418,89 @@ export async function cancelRun(runId: string): Promise<void> {
     throw new Error(`Failed to cancel run: ${response.statusText}`)
   }
 }
+
+// ============ Asset Review API Functions ============
+
+export interface SceneAsset {
+  scene_id: string
+  scene_number: number
+  image_url: string | null
+  image_prompt: string | null
+  narration: string | null
+}
+
+export interface BgmAsset {
+  audio_url: string | null
+  prompt: string | null
+}
+
+export interface AssetsResponse {
+  scenes: SceneAsset[]
+  bgm: BgmAsset
+}
+
+export async function getAssets(runId: string): Promise<AssetsResponse> {
+  const response = await fetch(`${API_BASE}/v1/runs/${encodeURIComponent(runId)}/assets`)
+
+  if (!response.ok) {
+    throw new Error(`Failed to get assets: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+export async function confirmAssets(runId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/v1/runs/${encodeURIComponent(runId)}/assets/confirm`, {
+    method: 'POST',
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to confirm assets: ${response.statusText}`)
+  }
+}
+
+export async function regenerateSceneImage(
+  runId: string,
+  sceneId: string,
+  newPrompt?: string
+): Promise<{ image_url: string }> {
+  const body = newPrompt ? { image_prompt: newPrompt } : {}
+
+  const response = await fetch(
+    `${API_BASE}/v1/runs/${encodeURIComponent(runId)}/assets/regenerate-image/${encodeURIComponent(sceneId)}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    }
+  )
+
+  if (!response.ok) {
+    throw new Error(`Failed to regenerate scene image: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+export async function regenerateBgm(
+  runId: string,
+  newPrompt?: string
+): Promise<{ audio_url: string }> {
+  const body = newPrompt ? { bgm_prompt: newPrompt } : {}
+
+  const response = await fetch(`${API_BASE}/v1/runs/${encodeURIComponent(runId)}/assets/regenerate-bgm`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to regenerate BGM: ${response.statusText}`)
+  }
+
+  return response.json()
+}

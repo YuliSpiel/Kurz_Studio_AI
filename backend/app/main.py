@@ -18,6 +18,7 @@ from fastapi import (
     HTTPException,
     Depends,
     Body,
+    Request,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -413,15 +414,28 @@ async def get_plot_json(run_id: str):
 
     # Fallback: construct path from run_id (useful after server restart)
     if not plot_json_path:
-        plot_json_path = Path(f"app/data/outputs/{run_id}/plot.json").resolve()
+        plot_json_path = settings.OUTPUT_DIR / run_id / "plot.json"
         logger.info(f"[{run_id}] Using fallback path: {plot_json_path}")
 
+    # Convert to Path if it's a string
+    plot_json_path = Path(plot_json_path) if not isinstance(plot_json_path, Path) else plot_json_path
+
     # Check if file exists
-    if not Path(plot_json_path).exists():
+    if not plot_json_path.exists():
         # Provide more helpful error message
         if run_id not in runs:
-            logger.warning(f"[{run_id}] Run not in memory (server may have restarted) and file not found")
-            raise HTTPException(status_code=404, detail=f"Plot JSON not found. The run may still be generating or the server was restarted.")
+            logger.warning(f"[{run_id}] Run not in memory (server may have restarted) and file not found at: {plot_json_path}")
+            # Check if run directory exists
+            run_dir = settings.OUTPUT_DIR / run_id
+            if run_dir.exists():
+                logger.info(f"[{run_id}] Run directory exists, checking for plot.json...")
+                if (run_dir / "plot.json").exists():
+                    plot_json_path = run_dir / "plot.json"
+                    logger.info(f"[{run_id}] Found plot.json in run directory")
+                else:
+                    raise HTTPException(status_code=404, detail=f"Plot JSON not found. The run may still be generating.")
+            else:
+                raise HTTPException(status_code=404, detail=f"Run directory not found.")
         else:
             logger.warning(f"[{run_id}] File not found at: {plot_json_path}")
             raise HTTPException(status_code=404, detail=f"Plot JSON file not generated yet. Please wait...")
@@ -655,16 +669,71 @@ async def regenerate_plot(run_id: str):
             "message": "Plot regeneration started"
         }
     """
-    from app.orchestrator.fsm import get_fsm, RunState
+    from app.orchestrator.fsm import get_fsm, RunState, register_fsm, FSM
     from app.tasks.plan import plan_task
     from app.utils.progress import publish_progress
+    import json
+
+    # Check if run exists in memory or can be restored from filesystem
+    output_dir = settings.OUTPUT_DIR / run_id
+    spec = None
 
     if run_id not in runs:
-        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+        # Try to restore from filesystem
+        layout_json_path = output_dir / "layout.json"
+        if not layout_json_path.exists():
+            raise HTTPException(status_code=404, detail=f"Run {run_id} not found (no layout.json)")
 
+        # Load spec from layout.json
+        try:
+            with open(layout_json_path, 'r', encoding='utf-8') as f:
+                layout_data = json.load(f)
+                spec = layout_data.get("spec", {})
+                if not spec:
+                    # Reconstruct minimal spec from layout
+                    layout_config = layout_data.get("layout_config", {})
+                    spec = {
+                        "mode": layout_data.get("mode", "general"),
+                        "prompt": layout_data.get("title", ""),
+                        "art_style": layout_config.get("art_style", "파스텔 수채화"),
+                        "review_mode": True,
+                    }
+                # Ensure required fields have defaults
+                spec.setdefault("num_characters", 2)
+                spec.setdefault("num_cuts", 7)
+                spec.setdefault("mode", "general")
+                spec.setdefault("review_mode", True)
+                spec.setdefault("art_style", "파스텔 수채화")
+                spec.setdefault("music_genre", "ambient")
+            logger.info(f"[{run_id}] Restored spec from filesystem for plot regeneration: {spec}")
+        except Exception as e:
+            logger.error(f"[{run_id}] Failed to load spec from layout.json: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to restore run spec: {str(e)}")
+
+        # Create in-memory run entry
+        runs[run_id] = {
+            "spec": spec,
+            "state": "PLOT_REVIEW",
+            "progress": 0.0,
+            "logs": [],
+            "artifacts": {},
+        }
+    else:
+        spec = runs[run_id]["spec"]
+
+    # Get or create FSM
     fsm = get_fsm(run_id)
     if not fsm:
-        raise HTTPException(status_code=404, detail=f"FSM not found for run {run_id}")
+        # Create new FSM in PLOT_REVIEW state (since we're regenerating from review)
+        fsm = FSM(run_id, initial_state=RunState.PLOT_REVIEW)
+        register_fsm(fsm)
+        logger.info(f"[{run_id}] Created new FSM in PLOT_REVIEW state")
+
+    # Handle FAILED state - allow recovery by transitioning to PLOT_REVIEW first
+    if fsm.current_state == RunState.FAILED:
+        logger.info(f"[{run_id}] Recovering from FAILED state, transitioning to PLOT_REVIEW first")
+        if not fsm.transition_to(RunState.PLOT_REVIEW):
+            raise HTTPException(status_code=500, detail="Failed to recover from FAILED state")
 
     if fsm.current_state != RunState.PLOT_REVIEW:
         raise HTTPException(
@@ -681,7 +750,6 @@ async def regenerate_plot(run_id: str):
             runs[run_id]["state"] = fsm.current_state.value
 
             # Restart plan task
-            spec = runs[run_id]["spec"]
             plan_task.delay(run_id, spec)
             logger.info(f"[{run_id}] Plan task restarted for plot regeneration")
 
@@ -750,18 +818,9 @@ async def get_layout_config(run_id: str):
         layout_config = layout_content.get("metadata", {}).get("layout_config", {})
         title = layout_content.get("title", "")
 
-        # Add defaults if not present
-        if not layout_config:
-            layout_config = {
-                "use_title_block": True,
-                "title_bg_color": "#323296",
-                "title_font_size": 100,
-                "subtitle_font_size": 80,
-                "title_font": "Paperlogy-7Bold",
-                "subtitle_font": "Paperlogy-4Regular"
-            }
-
-        logger.info(f"[{run_id}] Successfully loaded layout config")
+        # Return empty config if not set - frontend will use user's saved VideoSettings as defaults
+        # This allows user's profile settings to be applied as the default layout values
+        logger.info(f"[{run_id}] Successfully loaded layout config (has_config={bool(layout_config)})")
         return {
             "run_id": run_id,
             "layout_config": layout_config,
@@ -954,6 +1013,339 @@ async def regenerate_layout(run_id: str):
     except Exception as e:
         logger.error(f"[{run_id}] Failed to regenerate layout: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to regenerate layout: {str(e)}")
+
+
+# ============ Asset Review Endpoints ============
+
+@app.get("/api/v1/runs/{run_id}/assets")
+async def get_assets(run_id: str):
+    """
+    Get assets (scenes with images, BGM) for review.
+    """
+    from pathlib import Path
+
+    output_dir = settings.OUTPUT_DIR / run_id
+    layout_json_path = output_dir / "layout.json"
+    plot_json_path = output_dir / "plot.json"
+
+    if not layout_json_path.exists():
+        raise HTTPException(status_code=404, detail="Layout not found")
+
+    with open(layout_json_path, "r") as f:
+        layout = orjson.loads(f.read())
+
+    # Load plot.json for original prompts (with {char_1} variables)
+    plot_prompts = {}
+    if plot_json_path.exists():
+        with open(plot_json_path, "r") as f:
+            plot_data = orjson.loads(f.read())
+            for plot_scene in plot_data.get("scenes", []):
+                scene_id = plot_scene.get("scene_id")
+                if scene_id and plot_scene.get("image_prompt"):
+                    plot_prompts[scene_id] = plot_scene["image_prompt"]
+
+    # Build scenes array
+    scenes = []
+    for i, scene in enumerate(layout.get("scenes", [])):
+        scene_id = scene.get("scene_id", f"scene_{i+1}")
+        scene_number = i + 1
+
+        # Get image URL
+        image_url = None
+        for img in scene.get("images", []):
+            if img.get("image_url"):
+                # Convert file path to URL
+                image_path = img["image_url"]
+                if Path(image_path).exists():
+                    image_url = f"/outputs/{run_id}/{Path(image_path).name}"
+                break
+
+        # Get image prompt from plot.json (original with {char_1} variables)
+        # Fall back to layout.json if not found
+        image_prompt = plot_prompts.get(scene_id)
+        if not image_prompt:
+            for img in scene.get("images", []):
+                if img.get("image_prompt"):
+                    image_prompt = img["image_prompt"]
+                    break
+
+        # Get narration text
+        narration = None
+        for text in scene.get("texts", []):
+            if text.get("text"):
+                narration = text["text"]
+                break
+
+        scenes.append({
+            "scene_id": scene_id,
+            "scene_number": scene_number,
+            "image_url": image_url,
+            "image_prompt": image_prompt,
+            "narration": narration
+        })
+
+    # Get BGM info
+    global_bgm = layout.get("global_bgm", {})
+    bgm_audio_url = None
+    if global_bgm.get("audio_url"):
+        bgm_path = global_bgm["audio_url"]
+        if Path(bgm_path).exists():
+            bgm_audio_url = f"/outputs/{run_id}/audio/{Path(bgm_path).name}"
+
+    bgm = {
+        "audio_url": bgm_audio_url,
+        "prompt": global_bgm.get("prompt")
+    }
+
+    return {
+        "run_id": run_id,
+        "scenes": scenes,
+        "bgm": bgm
+    }
+
+
+@app.post("/api/v1/runs/{run_id}/assets/confirm")
+async def confirm_assets(run_id: str):
+    """
+    Confirm assets and proceed to LAYOUT_REVIEW or RENDERING.
+    """
+    from app.orchestrator.fsm import get_fsm, RunState
+    from app.tasks.director import director_task, layout_ready_task
+    from app.utils.progress import publish_progress
+
+    fsm = get_fsm(run_id)
+
+    if not fsm:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    # If already in LAYOUT_REVIEW, trigger layout_ready_task to move to next stage
+    if fsm.current_state == RunState.LAYOUT_REVIEW:
+        logger.info(f"[{run_id}] Already in LAYOUT_REVIEW, triggering layout_ready_task")
+
+        # Get layout.json path
+        output_dir = settings.OUTPUT_DIR / run_id
+        layout_json_path = output_dir / "layout.json"
+
+        if not layout_json_path.exists():
+            raise HTTPException(status_code=404, detail="Layout not found")
+
+        # Trigger layout_ready_task to handle LAYOUT_REVIEW → RENDERING transition
+        layout_ready_task.delay([], run_id, str(layout_json_path))
+
+        publish_progress(
+            run_id,
+            state="LAYOUT_REVIEW",
+            progress=0.65,
+            log="레이아웃 검수 단계로 진행 중..."
+        )
+        return {"status": "confirmed", "next_state": "LAYOUT_REVIEW"}
+
+    # If already past LAYOUT_REVIEW, return success (idempotent)
+    if fsm.current_state in [RunState.RENDERING, RunState.QA, RunState.END]:
+        logger.info(f"[{run_id}] Assets already confirmed, current state: {fsm.current_state.value}")
+        return {"status": "confirmed", "next_state": fsm.current_state.value}
+
+    if fsm.current_state != RunState.ASSET_REVIEW:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot confirm assets: current state is {fsm.current_state.value}, expected ASSET_REVIEW"
+        )
+
+    # Get layout.json path
+    output_dir = settings.OUTPUT_DIR / run_id
+    layout_json_path = output_dir / "layout.json"
+
+    if not layout_json_path.exists():
+        raise HTTPException(status_code=404, detail="Layout not found")
+
+    # Transition to LAYOUT_REVIEW (for review mode)
+    if fsm.transition_to(RunState.LAYOUT_REVIEW):
+        logger.info(f"[{run_id}] Transitioned from ASSET_REVIEW to LAYOUT_REVIEW")
+        publish_progress(
+            run_id,
+            state="LAYOUT_REVIEW",
+            progress=0.65,
+            log="에셋 검수 완료 - 레이아웃 검수 단계"
+        )
+        return {"status": "confirmed", "next_state": "LAYOUT_REVIEW"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to transition to LAYOUT_REVIEW")
+
+
+@app.post("/api/v1/runs/{run_id}/assets/regenerate-image/{scene_id}")
+async def regenerate_scene_image(run_id: str, scene_id: str, request: Request):
+    """
+    Regenerate image for a specific scene.
+    """
+    from pathlib import Path
+    from app.orchestrator.fsm import get_fsm, RunState
+    from app.providers.images.gemini_image_client import GeminiImageClient
+
+    fsm = get_fsm(run_id)
+
+    if not fsm:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    if fsm.current_state != RunState.ASSET_REVIEW:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot regenerate image: current state is {fsm.current_state.value}, expected ASSET_REVIEW"
+        )
+
+    # Get request body
+    body = await request.json() if await request.body() else {}
+    new_prompt = body.get("image_prompt")
+
+    # Get layout.json
+    output_dir = settings.OUTPUT_DIR / run_id
+    layout_json_path = output_dir / "layout.json"
+
+    if not layout_json_path.exists():
+        raise HTTPException(status_code=404, detail="Layout not found")
+
+    with open(layout_json_path, "r") as f:
+        layout = orjson.loads(f.read())
+
+    # Find the scene
+    scene_idx = None
+    for i, scene in enumerate(layout.get("scenes", [])):
+        if scene.get("scene_id") == scene_id:
+            scene_idx = i
+            break
+
+    if scene_idx is None:
+        raise HTTPException(status_code=404, detail=f"Scene {scene_id} not found")
+
+    scene = layout["scenes"][scene_idx]
+
+    # Update prompt if provided
+    if new_prompt:
+        for img in scene.get("images", []):
+            img["image_prompt"] = new_prompt
+
+    # Regenerate image
+    try:
+        image_prompt = new_prompt or scene.get("images", [{}])[0].get("image_prompt", "")
+        mode = layout.get("metadata", {}).get("mode", "general")
+
+        # Use GeminiImageClient to generate new image
+        client = GeminiImageClient(api_key=settings.GEMINI_API_KEY)
+
+        # Determine aspect ratio based on mode
+        if mode == "general":
+            width, height = 1024, 1024  # 1:1 for general mode
+        else:
+            width, height = 768, 1024  # 9:16 for story mode
+
+        output_prefix = str(output_dir / f"{scene_id}_center")
+        new_image_path = client.generate_image(
+            prompt=image_prompt,
+            width=width,
+            height=height,
+            output_prefix=output_prefix
+        )
+
+        # Update layout.json with new image path
+        for img in scene.get("images", []):
+            img["image_url"] = str(new_image_path)
+
+        with open(layout_json_path, "wb") as f:
+            f.write(orjson.dumps(layout, option=orjson.OPT_INDENT_2))
+
+        logger.info(f"[{run_id}] Regenerated image for {scene_id}")
+
+        return {
+            "status": "regenerated",
+            "image_url": f"/outputs/{run_id}/{Path(new_image_path).name}"
+        }
+
+    except Exception as e:
+        logger.error(f"[{run_id}] Failed to regenerate image for {scene_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to regenerate image: {str(e)}")
+
+
+@app.post("/api/v1/runs/{run_id}/assets/regenerate-bgm")
+async def regenerate_bgm(run_id: str, request: Request):
+    """
+    Regenerate background music.
+    """
+    from pathlib import Path
+    from app.orchestrator.fsm import get_fsm, RunState
+    from app.providers.music.elevenlabs_music_client import ElevenLabsMusicClient
+
+    fsm = get_fsm(run_id)
+
+    if not fsm:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    if fsm.current_state != RunState.ASSET_REVIEW:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot regenerate BGM: current state is {fsm.current_state.value}, expected ASSET_REVIEW"
+        )
+
+    # Get request body
+    body = await request.json() if await request.body() else {}
+    new_prompt = body.get("prompt")
+
+    # Get layout.json
+    output_dir = settings.OUTPUT_DIR / run_id
+    layout_json_path = output_dir / "layout.json"
+
+    if not layout_json_path.exists():
+        raise HTTPException(status_code=404, detail="Layout not found")
+
+    with open(layout_json_path, "r") as f:
+        layout = orjson.loads(f.read())
+
+    # Get current BGM prompt or use new one
+    global_bgm = layout.get("global_bgm", {})
+    bgm_prompt = new_prompt or global_bgm.get("prompt", "upbeat background music")
+
+    try:
+        # Generate new BGM using ElevenLabs
+        audio_dir = output_dir / "audio"
+        audio_dir.mkdir(parents=True, exist_ok=True)
+
+        client = ElevenLabsMusicClient(api_key=settings.ELEVENLABS_API_KEY)
+
+        # Parse genre and mood from prompt (simple parsing)
+        genre = "ambient"
+        mood = "calm"
+        if "energetic" in bgm_prompt.lower() or "upbeat" in bgm_prompt.lower():
+            mood = "energetic"
+            genre = "upbeat"
+        elif "mysterious" in bgm_prompt.lower():
+            mood = "mysterious"
+            genre = "cinematic"
+        elif "happy" in bgm_prompt.lower():
+            mood = "happy"
+            genre = "upbeat"
+
+        new_bgm_path = client.generate_music(
+            genre=genre,
+            mood=mood,
+            duration_ms=30000,  # 30 seconds
+            output_filename=str(audio_dir / "global_bgm.mp3")
+        )
+
+        # Update layout.json
+        layout["global_bgm"]["audio_url"] = str(new_bgm_path)
+        layout["global_bgm"]["prompt"] = bgm_prompt
+
+        with open(layout_json_path, "wb") as f:
+            f.write(orjson.dumps(layout, option=orjson.OPT_INDENT_2))
+
+        logger.info(f"[{run_id}] Regenerated BGM")
+
+        return {
+            "status": "regenerated",
+            "audio_url": f"/outputs/{run_id}/audio/{Path(new_bgm_path).name}"
+        }
+
+    except Exception as e:
+        logger.error(f"[{run_id}] Failed to regenerate BGM: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to regenerate BGM: {str(e)}")
 
 
 @app.websocket("/ws/{run_id}")

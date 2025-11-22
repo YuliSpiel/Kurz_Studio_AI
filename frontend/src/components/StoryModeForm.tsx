@@ -131,7 +131,7 @@ export default function StoryModeForm({ onRunCreated, onAuthRequired }: StoryMod
       const result = await createRun({
         mode: 'story',
         prompt: storyText,
-        num_characters: Math.min(3, Math.max(1, characters.length)) as 1 | 2 | 3,
+        num_characters: Math.max(1, characters.length),  // Support any number of characters
         num_cuts: numCuts,
         art_style: stylePreset,
         music_genre: 'cinematic',

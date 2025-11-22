@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { getMyRuns, deleteRun, RunListItem } from '../api/client'
 import './Library.css'
 
-export default function Library({ onSelectVideo: _onSelectVideo }: { onSelectVideo?: (runId: string) => void }) {
+export default function Library({ onSelectVideo }: { onSelectVideo?: (runId: string) => void }) {
   const [runs, setRuns] = useState<RunListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -66,6 +66,9 @@ export default function Library({ onSelectVideo: _onSelectVideo }: { onSelectVid
   const handleVideoClick = (run: RunListItem) => {
     if (run.state === 'COMPLETED' && run.video_url) {
       setSelectedVideo(run)
+    } else if (run.state !== 'COMPLETED' && run.state !== 'FAILED') {
+      // For in-progress runs, navigate back to home and show RunStatus modal
+      onSelectVideo?.(run.run_id)
     }
   }
 
@@ -176,7 +179,7 @@ export default function Library({ onSelectVideo: _onSelectVideo }: { onSelectVid
             onClick={() => handleVideoClick(run)}
             onMouseEnter={() => setHoveredRunId(run.run_id)}
             onMouseLeave={() => setHoveredRunId(null)}
-            style={{ cursor: run.state === 'COMPLETED' ? 'pointer' : 'default' }}
+            style={{ cursor: run.state !== 'FAILED' ? 'pointer' : 'default' }}
           >
             {/* 9:16 Thumbnail */}
             <div className="library-thumbnail">

@@ -43,7 +43,7 @@ function HeroChat({ onSubmit, onEnhancementReady: _onEnhancementReady, onRunCrea
   const [editedTitle, setEditedTitle] = useState('')
   const [editedPlot, setEditedPlot] = useState('')
   const [editedNumCuts, setEditedNumCuts] = useState(3)
-  const [editedNumCharacters, setEditedNumCharacters] = useState(1)
+  const [editedNumCharacters, setEditedNumCharacters] = useState(2)
   const [editedArtStyle, setEditedArtStyle] = useState('')
   const [editedMusicGenre, setEditedMusicGenre] = useState('')
   const [editedNarrativeTone, setEditedNarrativeTone] = useState('')
@@ -214,7 +214,7 @@ function HeroChat({ onSubmit, onEnhancementReady: _onEnhancementReady, onRunCrea
       const runSpec = {
         mode: selectedMode,
         prompt: editedPlot,
-        num_characters: editedNumCharacters as 1 | 2 | 3,
+        num_characters: editedNumCharacters,
         num_cuts: editedNumCuts,
         art_style: editedArtStyle,
         music_genre: editedMusicGenre,
@@ -252,7 +252,7 @@ function HeroChat({ onSubmit, onEnhancementReady: _onEnhancementReady, onRunCrea
       const runSpec = {
         mode: selectedMode,
         prompt: editedPlot,
-        num_characters: editedNumCharacters as 1 | 2 | 3,
+        num_characters: editedNumCharacters,
         num_cuts: editedNumCuts,
         art_style: editedArtStyle,
         music_genre: editedMusicGenre,
@@ -1357,7 +1357,7 @@ function HeroChat({ onSubmit, onEnhancementReady: _onEnhancementReady, onRunCrea
                       suggested_title: prompt,
                       suggested_plot_outline: prompt,
                       suggested_num_cuts: 5,
-                      suggested_num_characters: 1,
+                      suggested_num_characters: 2,
                       suggested_art_style: '일러스트',
                       suggested_music_genre: 'upbeat',
                       suggested_narrative_tone: '격식형',

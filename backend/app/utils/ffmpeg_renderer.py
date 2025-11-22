@@ -562,7 +562,8 @@ class FFmpegRenderer:
             num_streams = len(audio_streams)
             mix_inputs = "".join(audio_streams)
             # Use duration=longest to include all voice clips, then FFmpeg will trim to video length
-            filter_complex_parts.append(f"{mix_inputs}amix=inputs={num_streams}:duration=longest[aout]")
+            # IMPORTANT: normalize=0 prevents automatic volume boost when streams end (fixes volume fade-in at end)
+            filter_complex_parts.append(f"{mix_inputs}amix=inputs={num_streams}:duration=longest:normalize=0[aout]")
 
             cmd.extend([
                 "-filter_complex", ";".join(filter_complex_parts),

@@ -7,6 +7,7 @@ import {
   type LayoutConfig,
   type Font,
 } from '../api/client'
+import { loadVideoSettings } from './VideoSettingsModal'
 
 interface LayoutReviewModalProps {
   runId: string
@@ -65,7 +66,21 @@ export default function LayoutReviewModal({ runId, onClose }: LayoutReviewModalP
         getAvailableFonts(),
       ])
 
-      setConfig(layoutData.layout_config)
+      // Load saved user settings as defaults
+      const savedSettings = loadVideoSettings()
+
+      // Merge server config with saved user defaults (server config takes precedence if set)
+      const serverConfig = layoutData.layout_config
+      const mergedConfig: LayoutConfig = {
+        use_title_block: serverConfig.use_title_block ?? savedSettings.use_title_block,
+        title_bg_color: serverConfig.title_bg_color || savedSettings.title_bg_color,
+        title_font: serverConfig.title_font || savedSettings.title_font,
+        title_font_size: serverConfig.title_font_size || savedSettings.title_font_size,
+        subtitle_font: serverConfig.subtitle_font || savedSettings.subtitle_font,
+        subtitle_font_size: serverConfig.subtitle_font_size || savedSettings.subtitle_font_size,
+      }
+
+      setConfig(mergedConfig)
       setTitle(layoutData.title)
       setFonts(fontsData)
     } catch (err: any) {

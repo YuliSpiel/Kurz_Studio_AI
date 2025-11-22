@@ -243,7 +243,8 @@ JSON 형식:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.9,  # Increased for more diverse character generation
-                max_tokens=2000
+                max_tokens=2000,
+                json_mode=True  # Force valid JSON output from Gemini
             )
 
             char_json_content = char_response_text.strip()
@@ -600,7 +601,8 @@ JSON 형식 (예시: 3개 컷을 요청받은 경우):
                 {"role": "user", "content": prompt}
             ],
             temperature=1.0,  # Increased for more creative and diverse plot generation
-            max_tokens=8000
+            max_tokens=8000,
+            json_mode=True  # Force valid JSON output from Gemini
         )
 
         plot_json_content = plot_response_text.strip()

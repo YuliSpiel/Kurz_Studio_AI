@@ -42,7 +42,10 @@
       "Bash(/opt/homebrew/opt/postgresql@16/bin/psql:*)",
       "Bash(./kvenv/bin/celery:*)",
       "Bash(./kvenv/bin/pip:*)",
-      "Bash(xargs kill -9)"
+      "Bash(xargs kill -9)",
+      "Bash(pgrep:*)",
+      "Bash(xargs kill -9 2)",
+      "Bash(/dev/null sleep 2 ps aux)"
     ],
     "deny": [],
     "ask": []
