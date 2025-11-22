@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createRun, uploadReferenceImage, getAvailableFonts, Font, enhancePrompt, PromptEnhancementResult, AuthenticationError } from '../api/client'
+import { loadVideoSettings } from './VideoSettingsModal'
 
 interface RunFormProps {
   onRunCreated: (runId: string, reviewMode?: boolean) => void
@@ -25,13 +26,15 @@ export default function RunForm({ onRunCreated, onAuthRequired, enhancementData 
   const [enhancementResult, setEnhancementResult] = useState<PromptEnhancementResult | null>(null)
   const [showEnhancementPreview, setShowEnhancementPreview] = useState(false)
 
-  // Layout customization states
+  // Layout customization states - load from saved settings
+  const savedSettings = loadVideoSettings()
   const [videoTitle, setVideoTitle] = useState('')
-  const [titleBgColor, setTitleBgColor] = useState('#323296') // Dark blue
-  const [titleFont, setTitleFont] = useState('AppleGothic')
-  const [titleFontSize, setTitleFontSize] = useState(100)
-  const [subtitleFont, setSubtitleFont] = useState('AppleGothic')
-  const [subtitleFontSize, setSubtitleFontSize] = useState(80)
+  const [titleBgColor, setTitleBgColor] = useState(savedSettings.title_bg_color)
+  const [titleFont, setTitleFont] = useState(savedSettings.title_font)
+  const [titleFontSize, setTitleFontSize] = useState(savedSettings.title_font_size)
+  const [subtitleFont, setSubtitleFont] = useState(savedSettings.subtitle_font)
+  const [subtitleFontSize, setSubtitleFontSize] = useState(savedSettings.subtitle_font_size)
+  const [useTitleBlock, setUseTitleBlock] = useState(savedSettings.use_title_block)
 
   // Test mode states (Option+Shift+T)
   const [showTestMode, setShowTestMode] = useState(false)
@@ -136,6 +139,7 @@ export default function RunForm({ onRunCreated, onAuthRequired, enhancementData 
         reference_images: referenceImages.length > 0 ? referenceImages : undefined,
         video_title: videoTitle,
         layout_config: {
+          use_title_block: useTitleBlock,
           title_bg_color: titleBgColor,
           title_font: titleFont,
           title_font_size: titleFontSize,
@@ -397,30 +401,32 @@ export default function RunForm({ onRunCreated, onAuthRequired, enhancementData 
           {/* Left: Preview */}
           <div className="preview-container">
             <div className="layout-preview">
-              <div
-                className="preview-title-block"
-                style={{
-                  backgroundColor: titleBgColor,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '10px 10px',
-                  boxSizing: 'border-box',
-                  minHeight: '40px'
-                }}
-              >
-                <span style={{
-                  color: 'white',
-                  fontSize: `${titleFontSize / 3.86}px`,
-                  fontFamily: titleFont,
-                  fontWeight: 'bold',
-                  whiteSpace: 'pre-wrap',
-                  textAlign: 'center',
-                  lineHeight: '1.2'
-                }}>
-                  {videoTitle || '샘플 타이틀'}
-                </span>
-              </div>
+              {useTitleBlock && (
+                <div
+                  className="preview-title-block"
+                  style={{
+                    backgroundColor: titleBgColor,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '10px 10px',
+                    boxSizing: 'border-box',
+                    minHeight: '40px'
+                  }}
+                >
+                  <span style={{
+                    color: 'white',
+                    fontSize: `${titleFontSize / 3.86}px`,
+                    fontFamily: titleFont,
+                    fontWeight: 'bold',
+                    whiteSpace: 'pre-wrap',
+                    textAlign: 'center',
+                    lineHeight: '1.2'
+                  }}>
+                    {videoTitle || '샘플 타이틀'}
+                  </span>
+                </div>
+              )}
               <div className="preview-content" style={{
                 flex: 1,
                 position: 'relative',
@@ -479,18 +485,32 @@ export default function RunForm({ onRunCreated, onAuthRequired, enhancementData 
           {/* Right: Settings */}
           <div className="settings-container">
             <div className="form-group">
-              <label>영상 제목</label>
-              <textarea
-                value={videoTitle}
-                onChange={(e) => setVideoTitle(e.target.value)}
-                placeholder="영상 제목을 입력하세요 (엔터로 줄바꿈 가능)"
-                rows={2}
-                style={{ resize: 'vertical' }}
-              />
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={useTitleBlock}
+                  onChange={(e) => setUseTitleBlock(e.target.checked)}
+                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                />
+                제목 블록 사용
+              </label>
             </div>
 
-            <div className="form-group">
-              <label>타이틀 블록 색상</label>
+            {useTitleBlock && (
+              <>
+                <div className="form-group">
+                  <label>영상 제목</label>
+                  <textarea
+                    value={videoTitle}
+                    onChange={(e) => setVideoTitle(e.target.value)}
+                    placeholder="영상 제목을 입력하세요 (엔터로 줄바꿈 가능)"
+                    rows={2}
+                    style={{ resize: 'vertical' }}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>타이틀 블록 색상</label>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                 <input
                   type="color"
@@ -527,6 +547,8 @@ export default function RunForm({ onRunCreated, onAuthRequired, enhancementData 
                 onChange={(e) => setTitleFontSize(Number(e.target.value))}
               />
             </div>
+              </>
+            )}
 
             <div className="form-group">
               <label>자막 폰트</label>

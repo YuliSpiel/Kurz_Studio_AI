@@ -7,6 +7,8 @@ import RunStatus from './components/RunStatus'
 import Player from './components/Player'
 import AuthModal from './components/AuthModal'
 import Library from './components/Library'
+import UserMenu from './components/UserMenu'
+import VideoSettingsModal from './components/VideoSettingsModal'
 import { PromptEnhancementResult } from './api/client'
 import { useAuth } from './contexts/AuthContext'
 
@@ -14,7 +16,7 @@ type AppMode = 'general' | 'story' | 'ad'
 type ViewMode = 'home' | 'library'
 
 function App() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
   const [viewMode, setViewMode] = useState<ViewMode>('home')
   const [appMode, setAppMode] = useState<AppMode>('general')
   const [currentRunId, setCurrentRunId] = useState<string | null>(null)
@@ -34,6 +36,7 @@ function App() {
 
   // Modal visibility state
   const [isRunStatusMinimized, setIsRunStatusMinimized] = useState(false)
+  const [showVideoSettings, setShowVideoSettings] = useState(false)
 
   const handleRunCreated = (runId: string, reviewMode: boolean = false, minimized: boolean = false) => {
     console.log('[App] handleRunCreated called:', { runId, reviewMode, minimized })
@@ -149,41 +152,13 @@ function App() {
             </div>
           </div>
           <div className="navbar-right">
-            {user ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{user.username}</div>
-                  <div style={{ fontSize: '0.8rem', color: '#666' }}>Credits: {user.credits}</div>
-                </div>
-                <button
-                  className="auth-btn login-btn"
-                  onClick={logout}
-                >
-                  Log out
-                </button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <button
-                  className="auth-btn login-btn"
-                  onClick={() => {
-                    setAuthModalMode('login')
-                    setShowAuthModal(true)
-                  }}
-                >
-                  Log in
-                </button>
-                <button
-                  className="auth-btn signup-btn"
-                  onClick={() => {
-                    setAuthModalMode('register')
-                    setShowAuthModal(true)
-                  }}
-                >
-                  Get started
-                </button>
-              </div>
-            )}
+            <UserMenu
+              onOpenAuthModal={(mode) => {
+                setAuthModalMode(mode)
+                setShowAuthModal(true)
+              }}
+              onOpenVideoSettings={() => setShowVideoSettings(true)}
+            />
           </div>
         </div>
       </nav>
@@ -244,6 +219,12 @@ function App() {
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
         initialMode={authModalMode}
+      />
+
+      {/* Video Settings Modal */}
+      <VideoSettingsModal
+        isOpen={showVideoSettings}
+        onClose={() => setShowVideoSettings(false)}
       />
 
       {/* Minimized Tab - Always rendered outside of main for visibility */}

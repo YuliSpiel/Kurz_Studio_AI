@@ -12,6 +12,121 @@ from app.utils.progress import publish_progress
 logger = logging.getLogger(__name__)
 
 
+def _validate_image_with_vision(
+    image_path: Path,
+    expected_description: str,
+    api_key: str,
+    run_id: str = ""
+) -> tuple[bool, str]:
+    """
+    Validate generated image matches expected description using Gemini Vision.
+
+    Args:
+        image_path: Path to the generated image
+        expected_description: Expected character/scene description to validate against
+        api_key: Gemini API key
+        run_id: Run identifier for logging
+
+    Returns:
+        Tuple of (is_valid, reason)
+    """
+    import base64
+    import httpx
+
+    if not image_path or not Path(image_path).exists():
+        return False, "Image file not found"
+
+    try:
+        # Read and encode image
+        with open(image_path, "rb") as f:
+            image_data = base64.b64encode(f.read()).decode("utf-8")
+
+        # Determine mime type
+        suffix = Path(image_path).suffix.lower()
+        mime_type = "image/png" if suffix == ".png" else "image/jpeg"
+
+        # Build validation prompt
+        validation_prompt = f"""이미지를 분석하고 다음 설명과 일치하는지 확인해주세요.
+
+예상 설명: {expected_description}
+
+다음 항목을 확인해주세요:
+1. 동물이 있다면: 종류(개, 고양이 등)와 색상(흰색, 갈색, 검정 등)이 설명과 일치하는가?
+2. 사람이 있다면: 성별, 머리색, 외모 특징이 설명과 일치하는가?
+3. 주요 색상이 설명과 일치하는가?
+
+응답 형식 (JSON만 반환):
+{{"match": true/false, "reason": "불일치 이유 또는 일치 확인", "detected": "실제 감지된 내용"}}
+
+중요: 색상(특히 흰색 vs 갈색/황금색)과 동물 종류가 명확히 다르면 match=false로 판정하세요."""
+
+        # Call Gemini Vision API
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+        headers = {
+            "x-goog-api-key": api_key,
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": validation_prompt},
+                    {
+                        "inlineData": {
+                            "mimeType": mime_type,
+                            "data": image_data
+                        }
+                    }
+                ]
+            }],
+            "generationConfig": {
+                "temperature": 0.1,
+                "maxOutputTokens": 500
+            }
+        }
+
+        with httpx.Client(timeout=30.0) as client:
+            response = client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            result = response.json()
+
+        # Parse response
+        candidates = result.get("candidates", [])
+        if not candidates:
+            logger.warning(f"[{run_id}] Vision validation: No response from API")
+            return True, "Validation skipped - no API response"
+
+        response_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        logger.info(f"[{run_id}] Vision validation response: {response_text[:200]}")
+
+        # Parse JSON response
+        import json
+        import re
+
+        # Extract JSON from response (may have markdown formatting)
+        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        if json_match:
+            validation_result = json.loads(json_match.group())
+            is_match = validation_result.get("match", True)
+            reason = validation_result.get("reason", "")
+            detected = validation_result.get("detected", "")
+
+            if not is_match:
+                logger.warning(f"[{run_id}] Image validation FAILED: {reason} (detected: {detected})")
+                return False, f"{reason} (감지됨: {detected})"
+            else:
+                logger.info(f"[{run_id}] Image validation PASSED: {reason}")
+                return True, reason
+        else:
+            logger.warning(f"[{run_id}] Could not parse validation response, assuming valid")
+            return True, "Could not parse response"
+
+    except Exception as e:
+        logger.warning(f"[{run_id}] Vision validation error: {e}")
+        # On error, don't block - assume valid
+        return True, f"Validation error: {e}"
+
+
 def _is_stub_image(image_path: Path) -> bool:
     """
     Check if image is a stub (1x1 pixel or very small).
@@ -404,35 +519,75 @@ def designer_task(self, run_id: str, json_path: str, spec: dict):
                     logger.info(f"[{run_id}] 🧪 STUB MODE: Skipping image generation for {scene_id}/{slot_id}")
                     image_path = None  # Force stub image creation
                 elif client:
-                    # Generate image (no validation - trust the API)
-                    try:
-                        # Generate image based on provider type
-                        if provider == "gemini":
-                            image_path = client.generate_image(
-                                prompt=prompt,
-                                seed=seed,
-                                width=gen_width,
-                                height=gen_height,
-                                output_prefix=f"app/data/outputs/{run_id}/{scene_id}_{slot_id}"
-                            )
-                        elif provider == "comfyui":
-                            image_path = client.generate_image(
-                                prompt=prompt,
-                                seed=seed,
-                                lora_name=settings.ART_STYLE_LORA,
-                                lora_strength=spec.get("lora_strength", 0.8),
-                                reference_images=spec.get("reference_images", []),
-                                output_prefix=f"app/data/outputs/{run_id}/{scene_id}_{slot_id}"
-                            )
+                    # Generate image with validation and retry
+                    max_validation_retries = 2
+                    validation_enabled = provider == "gemini" and settings.GEMINI_API_KEY
 
-                        if image_path:
-                            logger.info(f"[{run_id}] ✓ Image generated for {scene_id}/{slot_id}: {image_path}")
-                        else:
-                            logger.warning(f"[{run_id}] Image generation returned None for {scene_id}/{slot_id}")
+                    # Get validation description (character appearance or image prompt)
+                    validation_description = ""
+                    if img_type == "character":
+                        char_id = img_slot.get("ref_id")
+                        if char_id and char_id in char_descriptions:
+                            validation_description = char_descriptions[char_id]
+                    elif "image_prompt" in img_slot:
+                        validation_description = img_slot.get("image_prompt", "")
 
-                    except Exception as e:
-                        logger.error(f"[{run_id}] Image generation failed for {scene_id}/{slot_id}: {e}")
-                        image_path = None
+                    for attempt in range(max_validation_retries + 1):
+                        try:
+                            # Generate image based on provider type
+                            # Vary seed on retry to get different result
+                            current_seed = seed + (attempt * 100) if attempt > 0 else seed
+
+                            if provider == "gemini":
+                                image_path = client.generate_image(
+                                    prompt=prompt,
+                                    seed=current_seed,
+                                    width=gen_width,
+                                    height=gen_height,
+                                    output_prefix=f"app/data/outputs/{run_id}/{scene_id}_{slot_id}"
+                                )
+                            elif provider == "comfyui":
+                                image_path = client.generate_image(
+                                    prompt=prompt,
+                                    seed=current_seed,
+                                    lora_name=settings.ART_STYLE_LORA,
+                                    lora_strength=spec.get("lora_strength", 0.8),
+                                    reference_images=spec.get("reference_images", []),
+                                    output_prefix=f"app/data/outputs/{run_id}/{scene_id}_{slot_id}"
+                                )
+
+                            if not image_path:
+                                logger.warning(f"[{run_id}] Image generation returned None for {scene_id}/{slot_id}")
+                                continue
+
+                            logger.info(f"[{run_id}] ✓ Image generated for {scene_id}/{slot_id}: {image_path} (attempt {attempt + 1})")
+
+                            # Validate image with Gemini Vision (only for gemini provider and if description exists)
+                            if validation_enabled and validation_description and attempt < max_validation_retries:
+                                is_valid, reason = _validate_image_with_vision(
+                                    image_path=Path(image_path),
+                                    expected_description=validation_description,
+                                    api_key=settings.GEMINI_API_KEY,
+                                    run_id=run_id
+                                )
+
+                                if not is_valid:
+                                    logger.warning(f"[{run_id}] 🔄 Image validation failed for {scene_id}/{slot_id}: {reason}")
+                                    logger.info(f"[{run_id}] Retrying image generation (attempt {attempt + 2}/{max_validation_retries + 1})...")
+                                    publish_progress(run_id, log=f"디자이너: 이미지 검증 실패, 재생성 중... ({scene_id})")
+                                    continue  # Retry generation
+                                else:
+                                    logger.info(f"[{run_id}] ✅ Image validation passed for {scene_id}/{slot_id}")
+                                    break  # Success - exit retry loop
+                            else:
+                                break  # No validation needed or last attempt - exit loop
+
+                        except Exception as e:
+                            logger.error(f"[{run_id}] Image generation failed for {scene_id}/{slot_id}: {e}")
+                            if attempt < max_validation_retries:
+                                continue
+                            image_path = None
+                            break
 
                 if not image_path:
                     # Create stub image (1x1 pixel PNG)
